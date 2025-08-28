@@ -1,0 +1,30 @@
+feature,importance
+screen_name_length,0.32037242650137304
+screen_name_length statuses_count,0.14521667584768036
+statuses_count,0.10990603299945456
+followers_count,0.0964864005990619
+followers_count friends_count,0.07160278498296194
+friends_count,0.04652086681857068
+screen_name_length friends_count,0.04414631365184511
+screen_name_length followers_count,0.026840896938470745
+listed_count,0.026188673385913627
+followers_count favourites_count,0.025490403429077456
+favourites_count,0.022034518529595357
+friends_count favourites_count,0.01939810466386947
+screen_name_length favourites_count,0.017297748679190785
+statuses_count followers_count,0.015305933926199371
+statuses_count friends_count,0.009147891399411861
+statuses_count favourites_count,0.004044327647323786
+intertime,0.0
+uniqueMentions,0.0
+uniqueHashtags,0.0
+listed,0.0
+favorites,0.0
+ffratio,0.0
+hashtag,0.0
+mentions,0.0
+favoriteC,0.0
+replies,0.0
+retweets,0.0
+url,0.0
+uniqueURL,0.0
