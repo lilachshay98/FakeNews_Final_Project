@@ -1,0 +1,9 @@
+2025-09-03 17:10:00,433 - INFO - Starting news classifier application...
+2025-09-03 17:10:00,434 - INFO - Loading vectorizer from /Users/lilachshay/fake_news_detection/models/tfidf_vectorizer.joblib
+2025-09-03 17:10:00,436 - ERROR - Error loading models: No module named 'sklearn'
+2025-09-03 17:10:28,287 - INFO - Starting news classifier application...
+2025-09-03 17:10:28,288 - INFO - Loading vectorizer from /Users/lilachshay/fake_news_detection/models/tfidf_vectorizer.joblib
+2025-09-03 17:10:28,290 - ERROR - Error loading models: No module named 'sklearn'
+2025-09-03 17:11:18,095 - INFO - Starting news classifier application...
+2025-09-03 17:11:18,095 - INFO - Loading vectorizer from /Users/lilachshay/fake_news_detection/models/tfidf_vectorizer.joblib
+2025-09-03 17:11:18,097 - ERROR - Error loading models: No module named 'sklearn'

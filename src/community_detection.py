@@ -20,7 +20,7 @@ def load_accounts():
     Load records from train.json, dev.json, and test.json (if present) and
     return them as one data frame.
     """
-    files = ["datasets/train.json", "datasets/dev.json", "datasets/dev.json"]
+    files = ["data/raw/test.json", "data/raw/train.json", "data/raw/dev.json"]
     data = []
     for p in files:
         if os.path.exists(p):
@@ -234,7 +234,7 @@ def helper_plot_top_mentions(data, exclude_self=True):
     # save only the top 100 to a csv file
     top_k = 100
     top = counts.most_common(top_k)
-    out_path = Path("../top_100_mentioned_accounts.csv")
+    out_path = Path("data/stats/top_100_mentioned_accounts.csv")
     with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["rank", "account", "count"])
@@ -244,7 +244,7 @@ def helper_plot_top_mentions(data, exclude_self=True):
     return counts
 
 
-def plot_top_mentions(counts, top_k=5, out_png="top5_mentions.png", color_map=None):
+def plot_top_mentions(counts, top_k=5, out_png="figures/top5_mentions.png", color_map=None):
     """
     Plot a horizontal bar chart of top-k mentioned accounts.
 
@@ -309,7 +309,7 @@ def plot_top_mentions(counts, top_k=5, out_png="top5_mentions.png", color_map=No
     print(f"Saved to {out_png}")
 
 
-def plot_follow_graph(H, labels, screen, anchor_ids, partition, out_png="follow_graph_louvain.png"):
+def plot_follow_graph(H, labels, screen, anchor_ids, partition, out_png="figures/follow_graph_louvain.png"):
     """
         Draw the follow subgraph with bot/human colors, highlighted anchors, and community count.
 
@@ -394,5 +394,5 @@ if __name__ == "__main__":
     partition = louvain_partition(H)
 
     counts = helper_plot_top_mentions(accounts, exclude_self=True)
-    plot_top_mentions(counts, top_k=5, out_png="top5_mentions.png")
-    plot_follow_graph(H, labels, screen, anchor_ids, partition, out_png="follow_graph_louvain.png")
+    plot_top_mentions(counts, top_k=5)
+    plot_follow_graph(H, labels, screen, anchor_ids, partition)

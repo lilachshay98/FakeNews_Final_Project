@@ -3,9 +3,15 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict
 import matplotlib.pyplot as plt
+from pathlib import Path
+
+# adjusting file paths
+ROOT = Path(__file__).resolve().parents[1]  # goes from src/ up to project root
+DATA = ROOT / "data" / "raw"
+FIGS = ROOT / "figures"
 
 
-def measure_traffic(out_png="engagement.png"):
+def measure_traffic(out_png=FIGS/"engagement.png"):
     """
     Plot stacked bars of engagement components (mentions, replies, retweets, favourites)
     for Real vs. Fake using raw totals.
@@ -22,7 +28,7 @@ def measure_traffic(out_png="engagement.png"):
         ["mentions", "replies", "retweets", "favourites"].
     """
     # load csv file
-    df = pd.read_csv("datasets/Features_For_Traditional_ML_Techniques.csv")
+    df = pd.read_csv(DATA/"Features_For_Traditional_ML_Techniques.csv")
 
     # ensure values are numeric + fill missing for the four attention components
     components = ["mentions", "replies", "retweets", "favourites"]
@@ -55,7 +61,8 @@ def measure_traffic(out_png="engagement.png"):
     return totals
 
 
-def identify_trends(out_csv="bots_human_accounts_created.csv", out_png="account_creation_over_time.png"):
+def identify_trends(out_csv=FIGS/"bots_human_accounts_created.csv",
+                    out_png=FIGS/"account_creation_over_time.png"):
     """
         Count monthly bot vs. human account creations and plot the time series.
 
@@ -71,7 +78,7 @@ def identify_trends(out_csv="bots_human_accounts_created.csv", out_png="account_
         None
         """
     # load datasets and merge into one
-    files = ["datasets/train.json", "datasets/dev.json", "datasets/dev.json"]
+    files = [DATA/"dev.json", DATA/"test.json", DATA/"train.json"]
     data = []
     for file in files:
         with open(file, "r") as f:

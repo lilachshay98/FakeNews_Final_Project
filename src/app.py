@@ -26,6 +26,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(BASE_DIR, 'models')
 DOMAIN_STATS_DIR = os.path.join(BASE_DIR, 'data/raw')
 
+
 class NewsClassifier:
     """Class to classify news articles as real or fake using multiple models"""
 
@@ -143,7 +144,7 @@ class NewsClassifier:
 
             # Calculate voting result
             votes = list(results.values())
-            final_prediction = 1 if sum(votes) > len(votes)/2 else 0
+            final_prediction = 1 if sum(votes) > len(votes) / 2 else 0
 
             # Calculate average probabilities
             avg_proba = [0, 0]
@@ -179,18 +180,20 @@ class NewsClassifier:
             logging.error(f"Error making prediction: {str(e)}")
             return None
 
+
 def print_header():
     """Print the application header"""
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print(f"{Fore.CYAN}=== Fake News Classification System ==={Style.RESET_ALL}")
-    print("="*50)
+    print("=" * 50)
     print("Enter news text to classify (type 'exit' to quit):\n")
+
 
 def print_result(result):
     """Print the classification result with nice formatting"""
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print(f"{Fore.YELLOW}=== Classification Result ==={Style.RESET_ALL}")
-    print("="*50)
+    print("=" * 50)
 
     # Print prediction with color
     if result['label'] == 'REAL':
@@ -204,10 +207,12 @@ def print_result(result):
     print(f"Probability of FAKE: {Fore.CYAN}{result['fake_probability']:.2f}%{Style.RESET_ALL}")
 
     # Print entropy score (lower is better - indicates more certainty)
-    entropy_color = Fore.GREEN if result['entropy_score'] < 30 else Fore.YELLOW if result['entropy_score'] < 70 else Fore.RED
+    entropy_color = Fore.GREEN if result['entropy_score'] < 30 else Fore.YELLOW if result[
+                                                                                       'entropy_score'] < 70 else Fore.RED
     print(f"Entropy Score: {entropy_color}{result['entropy_score']:.2f}%{Style.RESET_ALL} (lower means more certainty)")
 
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
+
 
 def main():
     """Main function to run the classifier application"""
@@ -248,6 +253,7 @@ def main():
         # Instead of clearing the console which may cause "TERM environment variable not set" error,
         # just print some blank lines to create visual separation
         print("\n\n")
+
 
 if __name__ == "__main__":
     main()
