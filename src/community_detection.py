@@ -1,4 +1,3 @@
-
 import csv
 import json
 import math
@@ -6,10 +5,14 @@ import os
 import re
 from collections import defaultdict, Counter
 from pathlib import Path
-
 import matplotlib.pyplot as plt
 import networkx as nx
+import community.community_louvain as community_louvain
 
+ROOT = Path(__file__).resolve().parents[1]  # goes from src/ up to project root
+DATA = ROOT / "data" / "raw"
+FIGS = ROOT / "figures"
+STATS = ROOT / "data" / "stats"
 # Twitter handle: 1–15 chars, letters/digits/underscore
 MENTION_RE = re.compile(r'(?<!\w)@([A-Za-z0-9_]{1,15})')
 
@@ -20,7 +23,7 @@ def load_accounts():
     Load records from train.json, dev.json, and test.json (if present) and
     return them as one data frame.
     """
-    files = ["data/raw/test.json", "data/raw/train.json", "data/raw/dev.json"]
+    files = [DATA/"dev.json", DATA/"test.json", DATA/"train.json"]
     data = []
     for p in files:
         if os.path.exists(p):
@@ -187,10 +190,6 @@ def louvain_partition(Gu):
         partition : dict[Hashable, int]
             Node -> community ID.
         """
-    try:
-        import community as community_louvain
-    except ImportError:
-        import community.community_louvain as community_louvain
     return community_louvain.best_partition(Gu, resolution=1.0, random_state=42)
 
 
@@ -234,7 +233,7 @@ def helper_plot_top_mentions(data, exclude_self=True):
     # save only the top 100 to a csv file
     top_k = 100
     top = counts.most_common(top_k)
-    out_path = Path("data/stats/top_100_mentioned_accounts.csv")
+    out_path = Path(DATA/"top_100_mentioned_accounts.csv")
     with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["rank", "account", "count"])
@@ -244,7 +243,7 @@ def helper_plot_top_mentions(data, exclude_self=True):
     return counts
 
 
-def plot_top_mentions(counts, top_k=5, out_png="figures/top5_mentions.png", color_map=None):
+def plot_top_mentions(counts, top_k=5, out_png=FIGS/"top5_mentions.png", color_map=None):
     """
     Plot a horizontal bar chart of top-k mentioned accounts.
 
@@ -309,7 +308,7 @@ def plot_top_mentions(counts, top_k=5, out_png="figures/top5_mentions.png", colo
     print(f"Saved to {out_png}")
 
 
-def plot_follow_graph(H, labels, screen, anchor_ids, partition, out_png="figures/follow_graph_louvain.png"):
+def plot_follow_graph(H, labels, screen, anchor_ids, partition, out_png=FIGS/"follow_graph_louvain.png"):
     """
         Draw the follow subgraph with bot/human colors, highlighted anchors, and community count.
 

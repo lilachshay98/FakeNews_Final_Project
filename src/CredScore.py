@@ -68,7 +68,6 @@ def tld_bonus_score(domain):
 # Final 0–40 combined scorer
 # --------------------------
 def final_domain_score_0_40(path_to_df, domain,
-                            credible_suffixes=None,
                             k=20.0, neutral=0.5,
                             domain_col='domain', real_col='real', total_col='total',
                             aggregate_duplicates=True):
@@ -83,10 +82,11 @@ def final_domain_score_0_40(path_to_df, domain,
         domain_col=domain_col, real_col=real_col, total_col=total_col,
         aggregate_duplicates=aggregate_duplicates
     )
-    score_0_10 = tld_bonus_score(domain, credible_suffixes=credible_suffixes)
+    score_0_10 = tld_bonus_score(domain)
     return int(score_0_30 + score_0_10)
 
 
+# todo: might delete if not needed
 def normalize_domain(s):
     """Strip scheme/port/'www.' so URLs and bare domains match."""
     if '://' not in s:
@@ -104,6 +104,11 @@ def CredScore_algorithm(content, source, label):
 
         # 2. domain reputation score (0-40)
         domain_score = final_domain_score_0_40(STATS/"domains_summary.csv", source)
+        return domain_score
 
     if label == "twitter":
         pass
+
+
+if __name__ == "__main__":
+    print(CredScore_algorithm("", "guardian.co.uk", "article"))
