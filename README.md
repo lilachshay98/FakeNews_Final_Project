@@ -3,6 +3,10 @@
 This project includes several Python files for analyzing data across diverse datasets, defines the CredScore algorithm for fake news detection,
 and provides the resulting figures.
 
+## Prerequisites
+
+* Pycharm installed on your machine
+
 ## Getting Started
 
 These instructions will get you a copy of the project up and running on your local machine for development or testing purposes.
@@ -17,11 +21,10 @@ These instructions will get you a copy of the project up and running on your loc
   ```bash
   git lfs install
   git lfs pull          # fetch the real blobs for all LFS-tracked files
-
-## Prerequisites
-
-* Pycharm installed on your machine
+  git lfs checkout      # ensure working tree files are replaced (not pointer stubs)
 
 
 
-git lfs checkout      # ensure working tree files are replaced (not pointer stubs)
+
+
+
