@@ -22,9 +22,3 @@ These instructions will get you a copy of the project up and running on your loc
   git lfs install
   git lfs pull          # fetch the real blobs for all LFS-tracked files
   git lfs checkout      # ensure working tree files are replaced (not pointer stubs)
-
-
-
-
-
-
