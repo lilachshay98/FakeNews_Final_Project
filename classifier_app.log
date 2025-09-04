@@ -7,3 +7,10 @@
 2025-09-03 17:11:18,095 - INFO - Starting news classifier application...
 2025-09-03 17:11:18,095 - INFO - Loading vectorizer from /Users/lilachshay/fake_news_detection/models/tfidf_vectorizer.joblib
 2025-09-03 17:11:18,097 - ERROR - Error loading models: No module named 'sklearn'
+2025-09-04 19:27:15,992 - INFO - Starting news classifier application...
+2025-09-04 19:27:15,993 - INFO - Loading vectorizer from /Users/lilachshay/fake_news_detection/models/tfidf_vectorizer.joblib
+2025-09-04 19:27:35,488 - INFO - Loading naive_bayes model from /Users/lilachshay/fake_news_detection/models/naive_bayes_model.joblib
+2025-09-04 19:27:35,496 - INFO - Loading logistic_regression model from /Users/lilachshay/fake_news_detection/models/logistic_regression_model.joblib
+2025-09-04 19:27:37,240 - INFO - Loading decision_tree model from /Users/lilachshay/fake_news_detection/models/decision_tree_model.joblib
+2025-09-04 19:27:38,016 - INFO - Loading random_forest model from /Users/lilachshay/fake_news_detection/models/random_forest_model.joblib
+2025-09-04 19:27:38,017 - ERROR - Error loading models: [Errno 2] No such file or directory: '/Users/lilachshay/fake_news_detection/models/random_forest_model.joblib'

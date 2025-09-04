@@ -80,8 +80,6 @@ def build_domain_summary(min_total=20, min_each=5):
 
 
 # ---------- plots ----------
-
-
 def plot_topN_total_stacked(summary: pd.DataFrame, top_n=20, outpath=FIGS/"topN_total_stacked.png"):
     """Linear stacked bars with clear R%/F% labels inside the bars (good for percentages)."""
     top = summary.sort_values("total", ascending=False).head(top_n).copy()
