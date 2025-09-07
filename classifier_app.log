@@ -14,3 +14,15 @@
 2025-09-04 19:27:37,240 - INFO - Loading decision_tree model from /Users/lilachshay/fake_news_detection/models/decision_tree_model.joblib
 2025-09-04 19:27:38,016 - INFO - Loading random_forest model from /Users/lilachshay/fake_news_detection/models/random_forest_model.joblib
 2025-09-04 19:27:38,017 - ERROR - Error loading models: [Errno 2] No such file or directory: '/Users/lilachshay/fake_news_detection/models/random_forest_model.joblib'
+2025-09-07 21:10:16,832 - INFO - Cleaning input text...
+2025-09-07 21:10:16,833 - INFO - Cleaning input text...
+2025-09-07 21:10:16,833 - INFO - Vectorizing text...
+2025-09-07 21:10:16,833 - ERROR - Error making prediction: 'NewsClassifier' object has no attribute 'vectorizer'
+2025-09-07 22:59:25,520 - INFO - Starting classification application...
+2025-09-07 22:59:25,521 - INFO - Loading vectorizer from /Users/lilachshay/fake_news_detection/models/tfidf_vectorizer.joblib
+2025-09-07 22:59:26,662 - INFO - Loading naive_bayes model from /Users/lilachshay/fake_news_detection/models/naive_bayes_model.joblib
+2025-09-07 22:59:26,667 - INFO - Loading logistic_regression model from /Users/lilachshay/fake_news_detection/models/logistic_regression_model.joblib
+2025-09-07 22:59:26,782 - INFO - Loading decision_tree model from /Users/lilachshay/fake_news_detection/models/decision_tree_model.joblib
+2025-09-07 22:59:26,831 - INFO - Loading random_forest model from /Users/lilachshay/fake_news_detection/models/random_forest_model.joblib
+2025-09-07 22:59:27,062 - INFO - Loaded bot detection model from /Users/lilachshay/fake_news_detection/models/bots/random_forest_bot_detector_latest.joblib
+2025-09-07 22:59:27,062 - INFO - All models loaded successfully

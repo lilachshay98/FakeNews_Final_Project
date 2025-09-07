@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # News Classifier GUI Application
-
+import csv
 import os
 import logging
 import tkinter as tk
@@ -10,10 +10,16 @@ import string
 import platform
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
+import warnings
+from page_rank import extract_domain, scrape_outlinks_one, build_graph_from_edges, STATS
+import networkx as nx
+
+matplotlib.use("Agg")
+os.environ.setdefault("TK_SILENCE_DEPRECATION", "1")  # silence macOS Tk banner
+
 
 # Setup logging - redirect to file to keep console clean
 LOG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'classifier_app_ui.log')
@@ -30,7 +36,8 @@ logging.basicConfig(
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(BASE_DIR, 'models')
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets')
-DOMAINS_FILE = os.path.join(BASE_DIR, 'data', 'raw', 'domains_summary.csv')
+DOMAINS_FILE = os.path.join(BASE_DIR, 'data', 'stats', 'domains_summary.csv')
+BOTS_MODEL_DIR = os.path.join(MODELS_DIR, 'bots')
 
 # Create assets directory if it doesn't exist
 os.makedirs(ASSETS_DIR, exist_ok=True)
@@ -44,7 +51,9 @@ COLORS = {
     'button_hover': '#4361ee',
     'real': '#38b000',
     'fake': '#d90429',
-    'neutral': '#adb5bd'
+    'neutral': '#adb5bd',
+    'human': '#38b000',
+    'bot': '#d90429'
 }
 
 # Specific macOS configuration
@@ -54,13 +63,13 @@ if platform.system() == 'Darwin':
     matplotlib.use('Agg')
 
 
-class NewsClassifierUI:
-    """GUI application for the fake news classifier"""
+class ContentClassifierUI:
+    """GUI application for content classification (fake news and bot detection)"""
 
     def __init__(self, root):
         """Initialize the UI and load models"""
         self.root = root
-        self.root.title("🔍 Fake News Detector")
+        self.root.title("🔍 Content Analysis System")
         self.root.geometry("900x700")
         self.root.configure(bg=COLORS['background'])
         self.root.resizable(True, True)
@@ -75,7 +84,18 @@ class NewsClassifierUI:
             # Icon not found or not supported on this platform
             pass
 
-        logging.info("Starting news classifier UI application...")
+        logging.info("Starting content classifier UI application...")
+
+        # Current content type (news or tweet)
+        self.current_content_type = None
+
+        # Initialize UI frames that will be shown/hidden
+        self.content_selection_frame = None
+        self.news_frame = None
+        self.tweet_frame = None
+
+        # Initialize dictionary for metric entries
+        self.metric_entries = {}
 
         # Load models in a separate thread to keep UI responsive
         self.models_loaded = False
@@ -95,16 +115,162 @@ class NewsClassifierUI:
 
         self.header_label = tk.Label(
             header_frame,
-            text="Fake News Detector 🕵️",
+            text="Content Analysis System 🕵️",
             font=("Arial", 24, "bold"),
             fg=COLORS['header'],
             bg=COLORS['background']
         )
         self.header_label.pack(side=tk.LEFT)
 
+        # Status bar
+        self.status_bar = tk.Label(
+            self.root,
+            text="Loading...",
+            bd=1,
+            relief=tk.SUNKEN,
+            anchor=tk.W,
+            padx=10
+        )
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # Progress indicator during loading
+        self.loading_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
+        self.loading_frame.pack(fill=tk.BOTH, expand=True)
+
+        loading_label = tk.Label(
+            self.loading_frame,
+            text="Loading models...",
+            font=("Arial", 14),
+            fg=COLORS['text'],
+            bg=COLORS['background']
+        )
+        loading_label.pack(pady=(100, 10))
+
+        self.progress = ttk.Progressbar(
+            self.loading_frame,
+            orient=tk.HORIZONTAL,
+            length=300,
+            mode='indeterminate'
+        )
+        self.progress.pack()
+        self.progress.start()
+
+        # Create content selection frame (will be shown after loading)
+        self.create_content_selection_frame()
+
+        # Create news and tweet frames (initially hidden)
+        self.create_news_frame()
+        self.create_tweet_frame()
+
+        # Results frame (hidden initially)
+        self.results_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
+
+        # Separator for results
+        self.separator = ttk.Separator(self.main_frame, orient='horizontal')
+
+    def create_content_selection_frame(self):
+        """Create the frame for selecting content type (news article or tweet)"""
+        self.content_selection_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
+
+        # Selection label
+        selection_label = tk.Label(
+            self.content_selection_frame,
+            text="Select content type to analyze:",
+            font=("Arial", 16, "bold"),
+            fg=COLORS['text'],
+            bg=COLORS['background']
+        )
+        selection_label.pack(pady=(50, 30))
+
+        # Button frame
+        button_frame = tk.Frame(self.content_selection_frame, bg=COLORS['background'])
+        button_frame.pack()
+
+        # News article button
+        news_button = tk.Button(
+            button_frame,
+            text="News Article Analysis",
+            font=("Arial", 14),
+            bg=COLORS['button'],
+            fg="black",
+            activebackground=COLORS['button_hover'],
+            cursor="hand2",
+            padx=20,
+            pady=15,
+            width=20,
+            command=self.show_news_frame
+        )
+        news_button.pack(side=tk.LEFT, padx=10)
+
+        # Tweet button
+        tweet_button = tk.Button(
+            button_frame,
+            text="Tweet Bot Detection",
+            font=("Arial", 14),
+            bg=COLORS['button'],
+            fg="black",
+            activebackground=COLORS['button_hover'],
+            cursor="hand2",
+            padx=20,
+            pady=15,
+            width=20,
+            command=self.show_tweet_frame
+        )
+        tweet_button.pack(side=tk.LEFT, padx=10)
+
+        # Description text
+        description_frame = tk.Frame(self.content_selection_frame, bg=COLORS['background'])
+        description_frame.pack(pady=30, fill=tk.X)
+
+        description_text = """
+        This application provides two types of content analysis:
+
+        1. News Article Analysis: Determines if a news article is likely real or fake based on its content and source domain.
+
+        2. Tweet Bot Detection: Analyzes if a tweet likely comes from a bot or human account based on the content and account metrics.
+
+        Select the appropriate option for your content.
+        """
+
+        description_label = tk.Label(
+            description_frame,
+            text=description_text,
+            font=("Arial", 12),
+            fg=COLORS['text'],
+            bg=COLORS['background'],
+            justify=tk.LEFT,
+            wraplength=700
+        )
+        description_label.pack()
+
+    def create_news_frame(self):
+        """Create the frame for news article analysis"""
+        self.news_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
+
+        # Back button
+        back_button = tk.Button(
+            self.news_frame,
+            text="← Back",
+            font=("Arial", 10),
+            bg=COLORS['neutral'],
+            fg="black",
+            command=self.show_content_selection
+        )
+        back_button.pack(anchor=tk.W, pady=(0, 10))
+
+        # News header
+        news_header = tk.Label(
+            self.news_frame,
+            text="News Article Analysis",
+            font=("Arial", 18, "bold"),
+            fg=COLORS['header'],
+            bg=COLORS['background']
+        )
+        news_header.pack(fill=tk.X, pady=(0, 20))
+
         # Instructions
         instruction_label = tk.Label(
-            self.main_frame,
+            self.news_frame,
             text="Enter news text to analyze:",
             font=("Arial", 12),
             fg=COLORS['text'],
@@ -114,7 +280,7 @@ class NewsClassifierUI:
         instruction_label.pack(fill=tk.X, pady=(0, 10))
 
         # Text entry area with scrollbar
-        self.text_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
+        self.text_frame = tk.Frame(self.news_frame, bg=COLORS['background'])
         self.text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
 
         self.news_text = scrolledtext.ScrolledText(
@@ -128,7 +294,7 @@ class NewsClassifierUI:
         self.news_text.pack(fill=tk.BOTH, expand=True)
 
         # Domain input
-        domain_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
+        domain_frame = tk.Frame(self.news_frame, bg=COLORS['background'])
         domain_frame.pack(fill=tk.X, pady=(0, 10))
 
         domain_label = tk.Label(
@@ -150,100 +316,283 @@ class NewsClassifierUI:
         )
         self.domain_entry.pack(side=tk.LEFT, padx=(5, 0))
 
+        # URL input
+        url_frame = tk.Frame(self.news_frame, bg=COLORS['background'])
+        url_frame.pack(fill=tk.X, pady=(0, 10))
+
+        url_label = tk.Label(
+            url_frame,
+            text="Enter URL (optional):",
+            font=("Arial", 12),
+            fg=COLORS['text'],
+            bg=COLORS['background'],
+            anchor="w"
+        )
+        url_label.pack(side=tk.LEFT)
+
+        self.url_entry = tk.Entry(
+            url_frame,
+            font=("Arial", 12),
+            bg="white",
+            fg=COLORS['text'],
+            width=30
+        )
+        self.url_entry.pack(side=tk.LEFT, padx=(5, 0))
+
         # Example button
         self.example_button = tk.Button(
-            self.main_frame,
+            self.news_frame,
             text="Load Example Text",
             font=("Arial", 10),
             bg=COLORS['button'],
-            fg="black",  # Changed from white to black
+            fg="black",
             activebackground=COLORS['button_hover'],
             cursor="hand2",
             padx=10,
-            command=self.load_example_text
+            command=self.load_example_news
         )
         self.example_button.pack(anchor=tk.W, pady=(0, 10))
 
         # Button frame
-        button_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
-        button_frame.pack(fill=tk.X, pady=(0, 20))
+        news_button_frame = tk.Frame(self.news_frame, bg=COLORS['background'])
+        news_button_frame.pack(fill=tk.X, pady=(10, 20))
 
         # Analyze button
-        self.analyze_button = tk.Button(
-            button_frame,
+        self.analyze_news_button = tk.Button(
+            news_button_frame,
             text="Analyze",
             font=("Arial", 12, "bold"),
             bg=COLORS['button'],
-            fg="black",  # Changed from white to black
+            fg="black",
             activebackground=COLORS['button_hover'],
             cursor="hand2",
             padx=20,
             pady=10,
-            command=self.analyze_text
+            command=self.analyze_news
         )
-        self.analyze_button.pack(side=tk.LEFT)
+        self.analyze_news_button.pack(side=tk.LEFT)
 
         # Clear button
-        self.clear_button = tk.Button(
-            button_frame,
+        self.clear_news_button = tk.Button(
+            news_button_frame,
             text="Clear",
             font=("Arial", 12),
             bg=COLORS['neutral'],
-            fg="black",  # Changed from white to black
+            fg="black",
             activebackground="#999999",
             cursor="hand2",
             padx=20,
             pady=10,
-            command=self.clear_text
+            command=self.clear_news
         )
-        self.clear_button.pack(side=tk.LEFT, padx=(10, 0))
+        self.clear_news_button.pack(side=tk.LEFT, padx=(10, 0))
 
-        # Loading indicator
-        self.loading_label = tk.Label(
-            button_frame,
-            text="Loading models...",
-            font=("Arial", 10, "italic"),
-            fg=COLORS['neutral'],
+    def create_tweet_frame(self):
+        """Create the frame for tweet bot detection"""
+        self.tweet_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
+
+        # Back button
+        back_button = tk.Button(
+            self.tweet_frame,
+            text="← Back",
+            font=("Arial", 10),
+            bg=COLORS['neutral'],
+            fg="black",
+            command=self.show_content_selection
+        )
+        back_button.pack(anchor=tk.W, pady=(0, 10))
+
+        # Tweet header
+        tweet_header = tk.Label(
+            self.tweet_frame,
+            text="Tweet Bot Detection",
+            font=("Arial", 18, "bold"),
+            fg=COLORS['header'],
             bg=COLORS['background']
         )
-        self.loading_label.pack(side=tk.RIGHT)
+        tweet_header.pack(fill=tk.X, pady=(0, 20))
 
-        # Progress bar for loading models
-        self.progress = ttk.Progressbar(
-            button_frame,
-            orient=tk.HORIZONTAL,
-            length=200,
-            mode='indeterminate'
+        # Tweet text input
+        tweet_instruction = tk.Label(
+            self.tweet_frame,
+            text="Enter tweet text:",
+            font=("Arial", 12),
+            fg=COLORS['text'],
+            bg=COLORS['background'],
+            anchor="w"
         )
-        self.progress.pack(side=tk.RIGHT, padx=(0, 10))
-        self.progress.start()
+        tweet_instruction.pack(fill=tk.X, pady=(0, 5))
 
-        # Results frame (hidden initially)
-        self.results_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
-
-        # Separator
-        self.separator = ttk.Separator(self.main_frame, orient='horizontal')
-
-        # Status bar
-        self.status_bar = tk.Label(
-            self.root,
-            text="Ready",
-            bd=1,
-            relief=tk.SUNKEN,
-            anchor=tk.W,
-            padx=10
+        self.tweet_text = tk.Text(
+            self.tweet_frame,
+            wrap=tk.WORD,
+            font=("Arial", 12),
+            height=4,
+            bg="white",
+            fg=COLORS['text']
         )
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.tweet_text.pack(fill=tk.X, pady=(0, 15))
+
+        # Account metrics section
+        metrics_label = tk.Label(
+            self.tweet_frame,
+            text="Account Metrics:",
+            font=("Arial", 14, "bold"),
+            fg=COLORS['text'],
+            bg=COLORS['background'],
+            anchor="w"
+        )
+        metrics_label.pack(fill=tk.X, pady=(5, 10))
+
+        # Create frames for each metric
+        metrics_frame = tk.Frame(self.tweet_frame, bg=COLORS['background'])
+        metrics_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Left metrics column
+        left_metrics = tk.Frame(metrics_frame, bg=COLORS['background'])
+        left_metrics.pack(side=tk.LEFT, fill=tk.Y)
+
+        # Right metrics column
+        right_metrics = tk.Frame(metrics_frame, bg=COLORS['background'])
+        right_metrics.pack(side=tk.LEFT, fill=tk.Y, padx=(20, 0))
+
+        # Third metrics column (for additional indicators)
+        third_metrics = tk.Frame(metrics_frame, bg=COLORS['background'])
+        third_metrics.pack(side=tk.LEFT, fill=tk.Y, padx=(20, 0))
+
+        # Create input fields for the metrics
+        # Left column metrics
+        self.create_metric_input(left_metrics, "Followers count:", "followers_count", "0")
+        self.create_metric_input(left_metrics, "Friends/Following count:", "friends_count", "0")
+        self.create_metric_input(left_metrics, "Total tweets/statuses:", "statuses_count", "0")
+
+        # Right column metrics
+        self.create_metric_input(right_metrics, "Favorites/Likes received:", "favourites_count", "0")
+        self.create_metric_input(right_metrics, "Username:", "screen_name", "", is_text=True)
+        self.create_metric_input(right_metrics, "Account creation date (YYYY-MM):", "account_date", "", is_text=True)
+
+        # New human likelihood indicator metrics
+        self.create_metric_input(third_metrics, "Listed count:", "listed_count", "0")
+
+        # Create a checkbox for verified status
+        verified_frame = tk.Frame(third_metrics, bg=COLORS['background'])
+        verified_frame.pack(fill=tk.X, pady=5)
+
+        verified_label = tk.Label(
+            verified_frame,
+            text="Verified account:",
+            font=("Arial", 11),
+            fg=COLORS['text'],
+            bg=COLORS['background'],
+            width=20,
+            anchor="w"
+        )
+        verified_label.pack(side=tk.LEFT)
+
+        # Create a StringVar for the Checkbutton
+        self.verified_var = tk.StringVar(value="no")
+
+        verified_check = tk.Checkbutton(
+            verified_frame,
+            text="Yes",
+            variable=self.verified_var,
+            onvalue="yes",
+            offvalue="no",
+            font=("Arial", 11),
+            bg=COLORS['background'],
+            fg=COLORS['text']
+        )
+        verified_check.pack(side=tk.LEFT)
+
+        # Store the variable in the metric_entries dictionary
+        self.metric_entries['verified'] = self.verified_var
+
+        # Example button
+        self.tweet_example_button = tk.Button(
+            self.tweet_frame,
+            text="Load Example Tweet",
+            font=("Arial", 10),
+            bg=COLORS['button'],
+            fg="black",
+            activebackground=COLORS['button_hover'],
+            cursor="hand2",
+            padx=10,
+            command=self.load_example_tweet
+        )
+        self.tweet_example_button.pack(anchor=tk.W, pady=(10, 10))
+
+        # Button frame
+        tweet_button_frame = tk.Frame(self.tweet_frame, bg=COLORS['background'])
+        tweet_button_frame.pack(fill=tk.X, pady=(10, 20))
+
+        # Analyze button
+        self.analyze_tweet_button = tk.Button(
+            tweet_button_frame,
+            text="Analyze",
+            font=("Arial", 12, "bold"),
+            bg=COLORS['button'],
+            fg="black",
+            activebackground=COLORS['button_hover'],
+            cursor="hand2",
+            padx=20,
+            pady=10,
+            command=self.analyze_tweet
+        )
+        self.analyze_tweet_button.pack(side=tk.LEFT)
+
+        # Clear button
+        self.clear_tweet_button = tk.Button(
+            tweet_button_frame,
+            text="Clear",
+            font=("Arial", 12),
+            bg=COLORS['neutral'],
+            fg="black",
+            activebackground="#999999",
+            cursor="hand2",
+            padx=20,
+            pady=10,
+            command=self.clear_tweet
+        )
+        self.clear_tweet_button.pack(side=tk.LEFT, padx=(10, 0))
+
+    def create_metric_input(self, parent, label_text, var_name, default_value, is_text=False):
+        """Create a labeled input field for a metric"""
+        frame = tk.Frame(parent, bg=COLORS['background'])
+        frame.pack(fill=tk.X, pady=5)
+
+        label = tk.Label(
+            frame,
+            text=label_text,
+            font=("Arial", 11),
+            fg=COLORS['text'],
+            bg=COLORS['background'],
+            width=20,
+            anchor="w"
+        )
+        label.pack(side=tk.LEFT)
+
+        entry = tk.Entry(
+            frame,
+            font=("Arial", 11),
+            bg="white",
+            fg=COLORS['text'],
+            width=15
+        )
+        entry.pack(side=tk.LEFT)
+        entry.insert(0, default_value)
+
+        # Store the entry widget in the dictionary
+        self.metric_entries[var_name] = entry
 
     def load_models(self):
         """Load machine learning models and domain data"""
         try:
-            # Load vectorizer
+            # Load vectorizer for news classification
             self.vectorizer_path = os.path.join(MODELS_DIR, 'tfidf_vectorizer.joblib')
             logging.info(f"Loading vectorizer from {self.vectorizer_path}")
             self.vectorizer = load(self.vectorizer_path)
 
-            # Load all models
+            # Load news classification models
             self.models = {}
             model_files = {
                 'naive_bayes': 'naive_bayes_model.joblib',
@@ -261,17 +610,26 @@ class NewsClassifierUI:
                     raise FileNotFoundError(f"Model file not found: {model_path}")
 
                 self.models[name] = load(model_path)
-                # Update status after each model loads
-                self.loading_label.config(text=f"Loading {name}... complete")
-                self.root.update_idletasks()
+
+            # Load bot detection model
+            logging.info("Loading bot detection model")
+            bot_model_path = os.path.join(BOTS_MODEL_DIR, 'random_forest_bot_detector_latest.joblib')
+            if not os.path.exists(bot_model_path):
+                # Find the latest model in the bots directory
+                bot_models = [f for f in os.listdir(BOTS_MODEL_DIR) if f.endswith('.joblib')
+                              and f.startswith('random_forest_bot_detector')]
+                if bot_models:
+                    latest_bot_model = max(bot_models)
+                    bot_model_path = os.path.join(BOTS_MODEL_DIR, latest_bot_model)
+
+            logging.info(f"Loading bot model from {bot_model_path}")
+            self.bot_model = load(bot_model_path)
 
             # Load domain data
             logging.info(f"Loading domain data from {DOMAINS_FILE}")
             try:
                 self.domains_data = pd.read_csv(DOMAINS_FILE)
                 logging.info(f"Loaded data for {len(self.domains_data)} domains")
-                self.loading_label.config(text="Loading domain data... complete")
-                self.root.update_idletasks()
             except Exception as e:
                 logging.warning(f"Could not load domain data: {str(e)}")
                 self.domains_data = None
@@ -280,27 +638,134 @@ class NewsClassifierUI:
             self.models_loaded = True
 
             # Update UI
-            self.root.after(0, self.update_ui_after_loading)
+            self.root.after(0, self.show_content_selection)
 
         except Exception as e:
             logging.error(f"Error loading models: {str(e)}")
             self.loading_error = str(e)
             self.root.after(0, self.show_loading_error)
 
-    def update_ui_after_loading(self):
-        """Update UI after models are loaded"""
-        self.loading_label.config(text="Models loaded successfully")
-        self.progress.stop()
-        self.progress.pack_forget()
-        self.analyze_button.config(state=tk.NORMAL)
-        self.status_bar.config(text="Ready to analyze news")
+    def show_content_selection(self):
+        """Show the content type selection screen"""
+        # Hide all frames
+        self.hide_all_frames()
+
+        # Update header
+        self.header_label.config(text="Content Analysis System 🕵️")
+
+        # Show content selection frame
+        self.content_selection_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Update status
+        self.status_bar.config(text="Select content type to analyze")
+
+        # Reset current content type
+        self.current_content_type = None
+
+    def get_url_pagerank_score(self, user_url, graph=None, alpha=0.85):
+        """
+        Get PageRank score for a user-provided URL by:
+        1. Extracting its domain
+        2. If domain exists in graph, return its score
+        3. If not, scrape its outlinks and calculate a temporary score
+        """
+        # Extract domain from URL
+        domain = extract_domain(user_url)
+        if not domain:
+            return None, "Could not extract a valid domain from the URL."
+
+        # Load existing graph if not provided
+        if graph is None:
+            try:
+                # Try to load existing edges
+                edges = []
+                with open(STATS / "domain_edges.csv", "r", encoding="utf-8") as f:
+                    reader = csv.reader(f)
+                    next(reader)  # Skip header
+                    for src, dst, label in reader:
+                        edges.append((src, dst, label))
+                graph = build_graph_from_edges(edges)
+            except Exception as e:
+                return None, f"Error loading existing graph: {str(e)}"
+
+        # If domain already in graph, return its PageRank score
+        pr = nx.pagerank(graph, alpha=alpha)
+        if domain in pr:
+            rank_position = sorted(pr.values(), reverse=True).index(pr[domain]) + 1
+            return pr[domain], f"Domain {domain} exists in our database (rank {rank_position}/{len(pr)})"
+
+        # If domain not in graph, fetch its outlinks and calculate temporary score
+        print(f"Domain {domain} not in existing graph. Fetching outlinks...")
+        try:
+            # Get outlinks for this domain
+            outlinks = scrape_outlinks_one(user_url)
+            if not outlinks:
+                return None, f"Could not fetch any outlinks for {domain}"
+
+            # Create temporary graph with new domain and its connections
+            temp_graph = graph.copy()
+            for src, dst in outlinks:
+                temp_graph.add_edge(src, dst)
+
+            # Calculate new PageRank scores
+            new_pr = nx.pagerank(temp_graph, alpha=alpha)
+
+            # Return the score for our domain
+            if domain in new_pr:
+                rank_position = sorted(new_pr.values(), reverse=True).index(new_pr[domain]) + 1
+                return new_pr[domain], f"Temporary score for {domain} (rank {rank_position}/{len(new_pr)})"
+            else:
+                return None, f"Domain {domain} has no connections in the graph"
+
+        except Exception as e:
+            return None, f"Error calculating PageRank: {str(e)}"
+
+    def show_news_frame(self):
+        """Show the news article analysis frame"""
+        self.hide_all_frames()
+        self.header_label.config(text="News Article Analysis 📰")
+        self.news_frame.pack(fill=tk.BOTH, expand=True)
+        self.current_content_type = "news"
+        self.status_bar.config(text="Enter a news article to analyze")
+
+    def show_tweet_frame(self):
+        """Show the tweet bot detection frame"""
+        self.hide_all_frames()
+        self.header_label.config(text="Tweet Bot Detection 🤖")
+        self.tweet_frame.pack(fill=tk.BOTH, expand=True)
+        self.current_content_type = "tweet"
+        self.status_bar.config(text="Enter tweet text and account metrics")
+
+    def hide_all_frames(self):
+        """Hide all content frames"""
+        # Hide the loading frame if it's showing
+        if hasattr(self, 'loading_frame'):
+            self.loading_frame.pack_forget()
+
+        # Hide the content selection frame if it exists
+        if hasattr(self, 'content_selection_frame'):
+            self.content_selection_frame.pack_forget()
+
+        # Hide the news frame if it exists
+        if hasattr(self, 'news_frame'):
+            self.news_frame.pack_forget()
+
+        # Hide the tweet frame if it exists
+        if hasattr(self, 'tweet_frame'):
+            self.tweet_frame.pack_forget()
+
+        # Hide the results frame and separator
+        if hasattr(self, 'results_frame'):
+            self.results_frame.pack_forget()
+
+        if hasattr(self, 'separator'):
+            self.separator.pack_forget()
 
     def show_loading_error(self):
         """Show error message if models failed to load"""
-        self.loading_label.config(text="Error loading models")
-        self.progress.stop()
+        self.hide_all_frames()
         messagebox.showerror("Loading Error",
-                            f"Failed to load models: {self.loading_error}\n\nThe application will close.")
+                             f"Failed to load models: {self.loading_error}\n\nThe application will close.")
         self.root.destroy()
 
     def clean_text(self, text):
@@ -322,8 +787,8 @@ class NewsClassifierUI:
 
         return text
 
-    def analyze_text(self):
-        """Analyze the input text and display results"""
+    def analyze_news(self):
+        """Analyze the news article and display results"""
         if not self.models_loaded:
             messagebox.showinfo("Please Wait", "Models are still loading. Please try again in a moment.")
             return
@@ -336,11 +801,21 @@ class NewsClassifierUI:
             messagebox.showwarning("Empty Input", "Please enter some news text to analyze.")
             return
 
-        # Get domain from input field
+        # Get domain and URL from input fields
         domain = self.domain_entry.get().strip()
+        url = self.url_entry.get().strip()
+
+        # Extract domain from URL if URL is provided but domain is not
+        if url and not domain:
+            extracted_domain = extract_domain(url)
+            if extracted_domain:
+                domain = extracted_domain
+                self.domain_entry.delete(0, tk.END)
+                self.domain_entry.insert(0, domain)
+                logging.info(f"Domain extracted from URL: {domain}")
 
         # Update status
-        self.status_bar.config(text="Analyzing text...")
+        self.status_bar.config(text="Analyzing news article...")
 
         try:
             # Clean the text
@@ -368,7 +843,7 @@ class NewsClassifierUI:
 
             # Calculate voting result
             votes = list(results.values())
-            final_prediction = 1 if sum(votes) > len(votes)/2 else 0
+            model_score = sum(votes) / len(votes)  # Score between 0 and 1
 
             # Calculate average probabilities
             avg_proba = [0, 0]
@@ -379,8 +854,20 @@ class NewsClassifierUI:
             avg_proba[0] /= len(probabilities)
             avg_proba[1] /= len(probabilities)
 
+            # Initialize cumulative scores (higher means more likely to be REAL)
+            # Start with model probability score
+            cumulative_real_score = avg_proba[1]
+            cumulative_fake_score = avg_proba[0]
+
+            # Track contribution from each source for logging
+            score_contributions = {
+                'model_probability': avg_proba[1] - 0.5  # Center around 0 for logging
+            }
+
             # Apply domain reputation adjustment if domain is provided and domain data is available
             domain_info = None
+            page_rank = 0.5  # Default neutral value
+
             if domain and hasattr(self, 'domains_data') and self.domains_data is not None:
                 try:
                     # Extract just the domain name without protocol, www, etc.
@@ -393,7 +880,8 @@ class NewsClassifierUI:
                         clean_domain = clean_domain.split('/')[0]
 
                     # Look for the domain in our dataset
-                    domain_match = self.domains_data[self.domains_data['domain'].str.contains(clean_domain, case=False, na=False)]
+                    domain_match = self.domains_data[
+                        self.domains_data['domain'].str.contains(clean_domain, case=False, na=False)]
 
                     if not domain_match.empty:
                         # Get the first matching domain info
@@ -404,21 +892,46 @@ class NewsClassifierUI:
                         if 'fake_ratio' in domain_info:
                             fake_ratio = float(domain_info['fake_ratio'])
 
-                            # Apply domain adjustment to the probabilities
-                            # Increase fake probability based on domain reputation
-                            adjustment = min(0.3, fake_ratio * 0.5)  # Cap the adjustment at 30%
+                            # Apply domain adjustment to the scores
+                            # Increase fake score based on domain reputation
+                            domain_adjustment = min(0.3, fake_ratio * 0.5)  # Cap the adjustment at 30%
 
-                            # Adjust probabilities while keeping sum at 1.0
-                            avg_proba[0] = min(0.95, avg_proba[0] + adjustment)
-                            avg_proba[1] = 1.0 - avg_proba[0]
+                            # Add to cumulative scores
+                            cumulative_fake_score += domain_adjustment
+                            cumulative_real_score -= domain_adjustment
 
-                            # Recalculate prediction based on adjusted probabilities
-                            final_prediction = 1 if avg_proba[1] > avg_proba[0] else 0
+                            score_contributions[
+                                'domain_reputation'] = -domain_adjustment  # Negative because it reduces "real" score
 
                             logging.info(f"Applied domain adjustment for {domain}: fake_ratio={fake_ratio}, " +
-                                        f"adjustment={adjustment}, new probabilities: fake={avg_proba[0]:.4f}, real={avg_proba[1]:.4f}")
+                                         f"adjustment={domain_adjustment}")
+
+                            # Get page rank and use it as a factor (higher page rank = more likely real)
+                            if url:
+                                page_rank = self.get_url_pagerank_score(url)
+                                page_rank_adjustment = (page_rank - 0.5) * 0.4  # Scale the effect (max ±0.2)
+
+                                cumulative_real_score += page_rank_adjustment
+                                cumulative_fake_score -= page_rank_adjustment
+
+                                score_contributions['page_rank'] = page_rank_adjustment
+
+                                logging.info(
+                                    f"Applied page rank adjustment: {page_rank}, adjustment={page_rank_adjustment}")
                 except Exception as e:
                     logging.error(f"Error processing domain information: {str(e)}")
+
+            # Calculate final probability based on cumulative scores
+            # Normalize to ensure they sum to 1
+            total_score = cumulative_real_score + cumulative_fake_score
+            avg_proba[1] = cumulative_real_score / total_score
+            avg_proba[0] = cumulative_fake_score / total_score
+
+            # Make final prediction based on normalized scores
+            final_prediction = 1 if avg_proba[1] > avg_proba[0] else 0
+
+            logging.info(f"Final scores - Real: {cumulative_real_score:.4f}, Fake: {cumulative_fake_score:.4f}")
+            logging.info(f"Score contributions: {score_contributions}")
 
             # Format results
             result = {
@@ -429,59 +942,367 @@ class NewsClassifierUI:
                 'fake_probability': avg_proba[0] * 100,
                 'model_votes': results,
                 'probabilities': probabilities,
-                'domain_info': domain_info
+                'domain_info': domain_info,
+                'page_rank': page_rank,
+                'result_type': 'news'
             }
 
             # Display results
             self.display_results(result)
-            self.status_bar.config(text="Analysis complete")
-
-            # Log the analysis
-            self.log_analysis(domain, news_text, result)
+            self.status_bar.config(text="News article analysis complete")
 
         except Exception as e:
             logging.error(f"Error analyzing text: {str(e)}")
             messagebox.showerror("Analysis Error", f"An error occurred during analysis: {str(e)}")
             self.status_bar.config(text="Analysis failed")
 
-    def log_analysis(self, domain, news_text, result):
-        """Log the analysis to a CSV file"""
-        log_file = os.path.join(ASSETS_DIR, "analysis_log.csv")
+    def analyze_tweet(self):
+        """Analyze a tweet for bot detection and content classification"""
+        if not self.models_loaded:
+            messagebox.showinfo("Please Wait", "Models are still loading. Please try again in a moment.")
+            return
 
-        # Create log directory if it doesn't exist
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        # Get tweet text
+        tweet_text = self.tweet_text.get("1.0", tk.END).strip()
 
-        # Prepare log entry
-        log_entry = {
-            'domain': domain,
-            'news_text': news_text[:2000],
-            'prediction': result['label'],
-            'confidence': f"{result['confidence']:.2f}",
-            'real_probability': f"{result['real_probability']:.2f}",
-            'fake_probability': f"{result['fake_probability']:.2f}",
-            'model_votes': str(result['model_votes']),
-        }
+        # Check if text is empty
+        if not tweet_text:
+            messagebox.showwarning("Empty Input", "Please enter tweet text to analyze.")
+            return
 
-        # Check if file exists
-        file_exists = os.path.isfile(log_file)
+        # Update status
+        self.status_bar.config(text="Analyzing tweet and account metrics...")
 
         try:
-            # Open the file in append mode
-            with open(log_file, 'a', newline='', encoding='utf-8') as f:
-                # Create CSV writer
-                writer = pd.DataFrame([log_entry])
+            # Collect user account metrics
+            user_data = {}
 
-                # Write header if file doesn't exist
-                if not file_exists:
-                    writer.to_csv(f, index=False)
-                else:
-                    writer.to_csv(f, index=False, header=False)
+            # Get numeric metrics
+            for metric in ['followers_count', 'friends_count', 'statuses_count', 'favourites_count']:
+                try:
+                    value = self.metric_entries[metric].get().strip()
+                    user_data[metric] = float(value) if value else 0.0
+                except ValueError:
+                    user_data[metric] = 0.0
 
-            logging.info(f"Analysis logged to {log_file}")
+            # Get text metrics
+            user_data['screen_name'] = self.metric_entries['screen_name'].get().strip()
+            account_date = self.metric_entries['account_date'].get().strip()
+
+            # Calculate account age in days if date is provided
+            user_data['account_age_days'] = 0
+            if account_date:
+                try:
+                    # Parse YYYY-MM format
+                    year, month = account_date.split('-')
+                    from datetime import datetime, date
+                    creation_date = datetime(int(year), int(month),
+                                             1)  # Use first day of month since we don't have the day
+                    today = datetime.now()
+                    user_data['account_age_days'] = (today - creation_date).days
+                    logging.info(f"Calculated account age: {user_data['account_age_days']} days")
+                except Exception as e:
+                    logging.warning(f"Could not parse account date: {str(e)}")
+                    user_data['account_age_days'] = 0
+
+            # Calculate screen_name_length
+            user_data['screen_name_length'] = len(user_data['screen_name'])
+
+            # Add verification status (create UI element for this if it's important)
+            # For now, check if we have a dedicated verified field in the form, otherwise default to False
+            user_data['verified'] = False
+            if 'verified' in self.metric_entries:
+                verified_value = self.metric_entries['verified'].get().strip().lower()
+                user_data['verified'] = verified_value in ('yes', 'true', '1', 'y')
+
+            # Calculate followers-to-friends ratio (strong human indicator)
+            user_data['followers_to_friends_ratio'] = user_data['followers_count'] / (user_data['friends_count'] + 1)
+
+            # Listed count (number of public lists the account is on)
+            user_data['listed_count'] = 0
+            if 'listed_count' in self.metric_entries:
+                try:
+                    value = self.metric_entries['listed_count'].get().strip()
+                    user_data['listed_count'] = float(value) if value else 0.0
+                except ValueError:
+                    user_data['listed_count'] = 0.0
+
+            # Set default values for other required metrics
+            user_data['retweets'] = 0.2
+            user_data['replies'] = 0.1
+            user_data['favoriteC'] = 0.3
+            user_data['hashtag'] = 0.3
+            user_data['mentions'] = 0.4
+            user_data['intertime'] = 3600
+            user_data['favorites'] = 100
+            user_data['uniqueHashtags'] = 0.5
+            user_data['uniqueMentions'] = 0.6
+            user_data['uniqueURL'] = 0.7
+
+            # Calculate friends-to-followers ratio
+            if user_data['followers_count'] > 0:
+                user_data['ffratio'] = user_data['friends_count'] / user_data['followers_count']
+            else:
+                user_data['ffratio'] = user_data['friends_count'] if user_data['friends_count'] > 0 else 1.0
+
+            # Perform bot detection with warning suppression
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning,
+                                        message="X has feature names, but RandomForestClassifier was fitted without feature names")
+
+                # Run bot detection
+                bot_result = self.predict_bot(tweet_text, user_data)
+
+                # Also analyze the tweet content
+                content_result = self.predict(tweet_text, "", account_date)
+
+            # Format combined results
+            combined_result = {
+                'bot_result': bot_result,
+                'content_result': content_result,
+                'result_type': 'tweet'
+            }
+
+            # Display results
+            self.display_results(combined_result)
+            self.status_bar.config(text="Tweet analysis complete")
 
         except Exception as e:
-            logging.error(f"Failed to log analysis: {str(e)}")
-            # Continue execution even if logging fails
+            logging.error(f"Error analyzing tweet: {str(e)}")
+            messagebox.showerror("Analysis Error", f"An error occurred during analysis: {str(e)}")
+            self.status_bar.config(text="Analysis failed")
+
+    def predict(self, text, domain, date):
+        """Make content predictions using news classification models"""
+        try:
+            # Clean the text
+            cleaned_text = self.clean_text(text)
+
+            # Vectorize
+            X = self.vectorizer.transform([cleaned_text])
+
+            # Make predictions with each model
+            results = {}
+            probabilities = {}
+
+            for name, model in self.models.items():
+                # Get prediction
+                prediction = model.predict(X)[0]
+                results[name] = prediction
+
+                # Get probability if the model supports it
+                try:
+                    proba = model.predict_proba(X)[0]
+                    probabilities[name] = proba
+                except:
+                    # Some models might not have predict_proba
+                    probabilities[name] = [0.5, 0.5] if prediction == 1 else [0.5, 0.5]
+
+            # Calculate voting result
+            votes = list(results.values())
+            model_score = sum(votes) / len(votes)  # Score between 0 and 1
+
+            # Calculate average probabilities
+            avg_proba = [0, 0]
+            for name in probabilities:
+                avg_proba[0] += probabilities[name][0]
+                avg_proba[1] += probabilities[name][1]
+
+            avg_proba[0] /= len(probabilities)
+            avg_proba[1] /= len(probabilities)
+
+            # Initialize cumulative scores (higher means more likely to be REAL)
+            # Start with model probability score
+            cumulative_real_score = avg_proba[1]
+            cumulative_fake_score = avg_proba[0]
+
+            # Track contribution from each source for logging
+            score_contributions = {
+                'model_probability': avg_proba[1] - 0.5  # Center around 0 for logging
+            }
+
+            # Apply domain reputation adjustment if domain is provided and domain data is available
+            domain_info = None
+            page_rank = 0.5  # Default neutral value
+
+            if domain and hasattr(self, 'domains_data') and self.domains_data is not None:
+                try:
+                    # Extract just the domain name without protocol, www, etc.
+                    clean_domain = domain.lower()
+                    if '://' in clean_domain:
+                        clean_domain = clean_domain.split('://')[1]
+                    if clean_domain.startswith('www.'):
+                        clean_domain = clean_domain[4:]
+                    if '/' in clean_domain:
+                        clean_domain = clean_domain.split('/')[0]
+
+                    # Look for the domain in our dataset
+                    domain_match = self.domains_data[
+                        self.domains_data['domain'].str.contains(clean_domain, case=False, na=False)]
+
+                    if not domain_match.empty:
+                        # Get the first matching domain info
+                        domain_info = domain_match.iloc[0].to_dict()
+
+                        # Calculate adjustment factor based on domain's fake news ratio
+                        # Higher fake ratio increases fake probability
+                        if 'fake_ratio' in domain_info:
+                            fake_ratio = float(domain_info['fake_ratio'])
+
+                            # Apply domain adjustment to the scores
+                            # Increase fake score based on domain reputation
+                            domain_adjustment = min(0.3, fake_ratio * 0.5)  # Cap the adjustment at 30%
+
+                            # Add to cumulative scores
+                            cumulative_fake_score += domain_adjustment
+                            cumulative_real_score -= domain_adjustment
+
+                            score_contributions[
+                                'domain_reputation'] = -domain_adjustment  # Negative because it reduces "real" score
+
+                            logging.info(f"Applied domain adjustment for {domain}: fake_ratio={fake_ratio}, " +
+                                         f"adjustment={domain_adjustment}")
+
+                            # Get page rank and use it as a factor (higher page rank = more likely real)
+                            if url:
+                                page_rank = self.get_url_pagerank_score(url)
+                                page_rank_adjustment = (page_rank - 0.5) * 0.4  # Scale the effect (max ±0.2)
+
+                                cumulative_real_score += page_rank_adjustment
+                                cumulative_fake_score -= page_rank_adjustment
+
+                                score_contributions['page_rank'] = page_rank_adjustment
+
+                                logging.info(
+                                    f"Applied page rank adjustment: {page_rank}, adjustment={page_rank_adjustment}")
+                except Exception as e:
+                    logging.error(f"Error processing domain information: {str(e)}")
+
+            # Calculate final probability based on cumulative scores
+            # Normalize to ensure they sum to 1
+            total_score = cumulative_real_score + cumulative_fake_score
+            avg_proba[1] = cumulative_real_score / total_score
+            avg_proba[0] = cumulative_fake_score / total_score
+
+            return {
+                'prediction': 1 if avg_proba[1] > avg_proba[0] else 0,
+                'label': 'REAL' if avg_proba[1] > avg_proba[0] else 'FAKE',
+                'confidence': avg_proba[1] * 100,
+                'real_probability': avg_proba[1] * 100,
+                'fake_probability': avg_proba[0] * 100,
+                'model_votes': results
+            }
+
+        except Exception as e:
+            logging.error(f"Error making prediction: {str(e)}")
+            return None
+
+    def predict_bot(self, tweet_text, user_data):
+        """Analyze if a tweet is from a bot based on user data"""
+        try:
+            if self.bot_model is None:
+                logging.error("Bot detection model not available")
+                return {
+                    'prediction': None,
+                    'label': 'UNKNOWN',
+                    'message': 'Bot detection model not available',
+                    'confidence': 0
+                }
+
+            # Prepare features for bot detection
+            features = {}
+
+            # Required features based on the bot model
+            required_features = [
+                'followers_count', 'friends_count', 'statuses_count',
+                'favourites_count', 'listed_count', 'screen_name_length',
+                'retweets', 'replies', 'favoriteC', 'hashtag',
+                'mentions', 'intertime', 'ffratio', 'favorites',
+                'uniqueHashtags', 'uniqueMentions', 'uniqueURL'
+            ]
+
+            # Fill available features from user_data
+            for feature in required_features:
+                if feature in user_data:
+                    features[feature] = user_data[feature]
+                else:
+                    features[feature] = 0.0
+
+            # Convert to DataFrame with appropriate columns that the model expects
+            X = pd.DataFrame([features])
+
+            # Add URL field which was in the original dataset
+            if 'url' not in X.columns:
+                X['url'] = 0.0
+
+            # Add 'listed' field which appears in the feature importance file
+            if 'listed' not in X.columns:
+                X['listed'] = X['listed_count'] if 'listed_count' in X.columns else 0.0
+
+            # Create polynomial features (interactions between features)
+            # Based on the feature importance file, we know the model was trained with these interactions
+            core_features = ['screen_name_length', 'statuses_count', 'followers_count', 'friends_count',
+                             'favourites_count']
+
+            # Add polynomial feature interactions
+            interaction_pairs = [
+                ('screen_name_length', 'statuses_count'),
+                ('followers_count', 'friends_count'),
+                ('screen_name_length', 'friends_count'),
+                ('screen_name_length', 'followers_count'),
+                ('followers_count', 'favourites_count'),
+                ('friends_count', 'favourites_count'),
+                ('screen_name_length', 'favourites_count'),
+                ('statuses_count', 'followers_count'),
+                ('statuses_count', 'friends_count'),
+                ('statuses_count', 'favourites_count')
+            ]
+
+            for feat1, feat2 in interaction_pairs:
+                interaction_name = f"{feat1} {feat2}"
+                X[interaction_name] = X[feat1] * X[feat2]
+
+            # Verify we have all 29 features
+            expected_features = set([
+                'screen_name_length', 'statuses_count', 'followers_count', 'friends_count', 'favourites_count',
+                'listed_count', 'url', 'retweets', 'replies', 'favoriteC', 'hashtag', 'mentions', 'intertime',
+                'ffratio', 'favorites', 'uniqueHashtags', 'uniqueMentions', 'uniqueURL', 'listed',
+                'screen_name_length statuses_count', 'followers_count friends_count',
+                'screen_name_length friends_count',
+                'screen_name_length followers_count', 'followers_count favourites_count',
+                'friends_count favourites_count',
+                'screen_name_length favourites_count', 'statuses_count followers_count', 'statuses_count friends_count',
+                'statuses_count favourites_count'
+            ])
+
+            # Check if we're missing any features and add them
+            missing_features = expected_features - set(X.columns)
+            for feat in missing_features:
+                X[feat] = 0.0  # Add any missing features with default value
+
+            # Make the prediction
+            prediction = self.bot_model.predict(X)[0]
+            probabilities = self.bot_model.predict_proba(X)[0]
+
+            # Bot is usually labeled as 0, human as 1
+            is_bot = prediction == 0
+
+            return {
+                'prediction': int(is_bot),
+                'label': 'BOT' if is_bot else 'HUMAN',
+                'confidence': probabilities[0 if is_bot else 1] * 100,
+                'bot_probability': probabilities[0] * 100,
+                'human_probability': probabilities[1] * 100
+            }
+
+        except Exception as e:
+            logging.error(f"Error in bot prediction: {str(e)}")
+            return {
+                'prediction': None,
+                'label': 'ERROR',
+                'message': f"Bot detection error: {str(e)}",
+                'confidence': 0
+            }
 
     def display_results(self, result):
         """Display the analysis results"""
@@ -490,18 +1311,26 @@ class NewsClassifierUI:
             widget.destroy()
 
         # Show separator
-        self.separator.pack(fill=tk.X, pady=20)
+        self.separator.pack(fill=tk.X, pady=10)
 
         # Show results frame
         self.results_frame.pack(fill=tk.BOTH, expand=True)
 
+        # Check result type
+        if result['result_type'] == 'news':
+            self.display_news_results(result)
+        elif result['result_type'] == 'tweet':
+            self.display_tweet_results(result)
+
+    def display_news_results(self, result):
+        """Display news article classification results"""
         # Results header
         results_header = tk.Frame(self.results_frame, bg=COLORS['background'])
         results_header.pack(fill=tk.X)
 
         results_label = tk.Label(
             results_header,
-            text="Analysis Results",
+            text="News Article Analysis Results",
             font=("Arial", 18, "bold"),
             fg=COLORS['header'],
             bg=COLORS['background']
@@ -586,6 +1415,158 @@ class NewsClassifierUI:
         # Create probability visualization
         self.create_probability_chart(result)
 
+    def display_tweet_results(self, result):
+        """Display tweet analysis results (both bot detection and content)"""
+        # Get the bot and content results
+        bot_result = result['bot_result']
+        content_result = result['content_result']
+
+        # Bot detection results header
+        bot_header = tk.Frame(self.results_frame, bg=COLORS['background'])
+        bot_header.pack(fill=tk.X, pady=(0, 10))
+
+        bot_label = tk.Label(
+            bot_header,
+            text="Bot Detection Results",
+            font=("Arial", 16, "bold"),
+            fg=COLORS['header'],
+            bg=COLORS['background']
+        )
+        bot_label.pack(side=tk.LEFT)
+
+        # Bot detection prediction
+        bot_frame = tk.Frame(self.results_frame, bg=COLORS['background'])
+        bot_frame.pack(fill=tk.X, pady=(0, 5))
+
+        # Determine color based on prediction
+        if bot_result['label'] == 'HUMAN':
+            pred_color = COLORS['human']
+        elif bot_result['label'] == 'BOT':
+            pred_color = COLORS['bot']
+        else:
+            pred_color = COLORS['neutral']
+
+        bot_pred_label = tk.Label(
+            bot_frame,
+            text=f"Account Type:",
+            font=("Arial", 14),
+            fg=COLORS['text'],
+            bg=COLORS['background']
+        )
+        bot_pred_label.pack(side=tk.LEFT)
+
+        bot_pred_value = tk.Label(
+            bot_frame,
+            text=bot_result['label'],
+            font=("Arial", 14, "bold"),
+            fg=pred_color,
+            bg=COLORS['background']
+        )
+        bot_pred_value.pack(side=tk.LEFT, padx=(5, 0))
+
+        # Show confidence if available
+        if 'confidence' in bot_result:
+            conf_label = tk.Label(
+                bot_frame,
+                text=f"(Confidence: {bot_result['confidence']:.1f}%)",
+                font=("Arial", 12),
+                fg=COLORS['text'],
+                bg=COLORS['background']
+            )
+            conf_label.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Show error message if there was a problem
+        if 'message' in bot_result:
+            error_frame = tk.Frame(self.results_frame, bg=COLORS['background'])
+            error_frame.pack(fill=tk.X, pady=(0, 10))
+
+            error_label = tk.Label(
+                error_frame,
+                text=f"Error: {bot_result['message']}",
+                font=("Arial", 11, "italic"),
+                fg="red",
+                bg=COLORS['background'],
+                wraplength=700
+            )
+            error_label.pack(anchor=tk.W, padx=10)
+
+        # Show bot/human probabilities if available
+        if 'bot_probability' in bot_result and 'human_probability' in bot_result:
+            prob_frame = tk.Frame(self.results_frame, bg=COLORS['background'])
+            prob_frame.pack(fill=tk.X, pady=(0, 10))
+
+            prob_text = f"BOT probability: {bot_result['bot_probability']:.1f}%, HUMAN probability: {bot_result['human_probability']:.1f}%"
+            prob_label = tk.Label(
+                prob_frame,
+                text=prob_text,
+                font=("Arial", 12),
+                fg=COLORS['text'],
+                bg=COLORS['background']
+            )
+            prob_label.pack(anchor=tk.W, padx=10)
+
+            # Create horizontal separator
+            ttk.Separator(self.results_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+
+        # Content analysis results
+        content_header = tk.Frame(self.results_frame, bg=COLORS['background'])
+        content_header.pack(fill=tk.X, pady=(10, 10))
+
+        content_label = tk.Label(
+            content_header,
+            text="Tweet Content Analysis",
+            font=("Arial", 16, "bold"),
+            fg=COLORS['header'],
+            bg=COLORS['background']
+        )
+        content_label.pack(side=tk.LEFT)
+
+        # Show content analysis results
+        if content_result:
+            content_frame = tk.Frame(self.results_frame, bg=COLORS['background'])
+            content_frame.pack(fill=tk.X, pady=(0, 5))
+
+            content_color = COLORS['real'] if content_result['label'] == 'REAL' else COLORS['fake']
+
+            content_pred_label = tk.Label(
+                content_frame,
+                text=f"Content Classification:",
+                font=("Arial", 14),
+                fg=COLORS['text'],
+                bg=COLORS['background']
+            )
+            content_pred_label.pack(side=tk.LEFT)
+
+            content_pred_value = tk.Label(
+                content_frame,
+                text=content_result['label'],
+                font=("Arial", 14, "bold"),
+                fg=content_color,
+                bg=COLORS['background']
+            )
+            content_pred_value.pack(side=tk.LEFT, padx=(5, 0))
+
+            conf_label = tk.Label(
+                content_frame,
+                text=f"(Confidence: {content_result['confidence']:.1f}%)",
+                font=("Arial", 12),
+                fg=COLORS['text'],
+                bg=COLORS['background']
+            )
+            conf_label.pack(side=tk.LEFT, padx=(10, 0))
+
+            # Create content probability chart
+            self.create_probability_chart(content_result)
+        else:
+            error_label = tk.Label(
+                self.results_frame,
+                text="Could not analyze tweet content. Bot detection results are still valid.",
+                font=("Arial", 12, "italic"),
+                fg="red",
+                bg=COLORS['background']
+            )
+            error_label.pack(anchor=tk.W, padx=10, pady=10)
+
     def create_probability_chart(self, result):
         """Create a visual chart of the prediction probabilities"""
         chart_frame = tk.Frame(self.results_frame, bg=COLORS['background'])
@@ -595,9 +1576,16 @@ class NewsClassifierUI:
         fig, ax = plt.subplots(figsize=(8, 2.5))
 
         # Data
-        labels = ['FAKE', 'REAL']
-        sizes = [result['fake_probability'], result['real_probability']]
-        colors = [COLORS['fake'], COLORS['real']]
+        if 'fake_probability' in result and 'real_probability' in result:
+            labels = ['FAKE', 'REAL']
+            sizes = [result['fake_probability'], result['real_probability']]
+            colors = [COLORS['fake'], COLORS['real']]
+        elif 'bot_probability' in result and 'human_probability' in result:
+            labels = ['BOT', 'HUMAN']
+            sizes = [result['bot_probability'], result['human_probability']]
+            colors = [COLORS['bot'], COLORS['human']]
+        else:
+            return  # No probability data available
 
         # Plot horizontal bar chart
         y_pos = np.arange(len(labels))
@@ -623,8 +1611,8 @@ class NewsClassifierUI:
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-    def load_example_text(self):
-        """Load an example text for analysis"""
+    def load_example_news(self):
+        """Load an example text for news analysis"""
         example_text = """
         Scientists have discovered a new species of deep-sea fish that can survive 
         at depths of over 8,000 meters in the Mariana Trench. The fish, named 
@@ -636,21 +1624,71 @@ class NewsClassifierUI:
 
         self.news_text.delete("1.0", tk.END)
         self.news_text.insert(tk.END, example_text.strip())
+        self.domain_entry.delete(0, tk.END)
+        self.domain_entry.insert(0, "marinebiology.org")
+        self.url_entry.delete(0, tk.END)
+        self.url_entry.insert(0, "https://marinebiology.org/article/deep-sea-fish-discovery")
 
-    def clear_text(self):
-        """Clear the text input area and results"""
+    def load_example_tweet(self):
+        """Load example data for tweet bot detection"""
+        example_tweet = "Just published 10 amazing tips for gaining followers fast! Check out the link below to learn more. #followers #socialmedia #growth #marketing"
+
+        self.tweet_text.delete("1.0", tk.END)
+        self.tweet_text.insert(tk.END, example_tweet)
+
+        # Set example metrics for a typical bot account
+        self.metric_entries['followers_count'].delete(0, tk.END)
+        self.metric_entries['followers_count'].insert(0, "12500")
+
+        self.metric_entries['friends_count'].delete(0, tk.END)
+        self.metric_entries['friends_count'].insert(0, "15000")
+
+        self.metric_entries['statuses_count'].delete(0, tk.END)
+        self.metric_entries['statuses_count'].insert(0, "42000")
+
+        self.metric_entries['favourites_count'].delete(0, tk.END)
+        self.metric_entries['favourites_count'].insert(0, "250")
+
+        self.metric_entries['screen_name'].delete(0, tk.END)
+        self.metric_entries['screen_name'].insert(0, "social_growth_expert")
+
+        self.metric_entries['account_date'].delete(0, tk.END)
+        self.metric_entries['account_date'].insert(0, "2024-05")
+
+    def clear_news(self):
+        """Clear the news article input and results"""
         self.news_text.delete("1.0", tk.END)
         self.domain_entry.delete(0, tk.END)
+        self.url_entry.delete(0, tk.END)
 
         # Hide results
         self.results_frame.pack_forget()
         self.separator.pack_forget()
 
         # Update status
-        self.status_bar.config(text="Ready")
+        self.status_bar.config(text="Ready to analyze news article")
+
+    def clear_tweet(self):
+        """Clear the tweet input, metrics, and results"""
+        self.tweet_text.delete("1.0", tk.END)
+
+        # Clear all metric entries
+        for entry in self.metric_entries.values():
+            entry.delete(0, tk.END)
+
+        # Reset numeric entries to 0
+        for metric in ['followers_count', 'friends_count', 'statuses_count', 'favourites_count']:
+            self.metric_entries[metric].insert(0, "0")
+
+        # Hide results
+        self.results_frame.pack_forget()
+        self.separator.pack_forget()
+
+        # Update status
+        self.status_bar.config(text="Ready to analyze tweet")
 
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = NewsClassifierUI(root)
+    app = ContentClassifierUI(root)
     root.mainloop()
