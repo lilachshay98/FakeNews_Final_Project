@@ -17,19 +17,16 @@ These instructions will get you a copy of the project up and running on your loc
 Clone this repository to your local machine using the following command:
 
   ```
-  git clone https://github.com/lilachshay98/f5-assignment.git
+  git clone https://github.com/lilachshay98/FakeNews_Final_Project.git
   ```
 
-2. Set up the Docker Images
+2. Navigate into the project directory:
    
-The project already includes Docker images for the Nginx server and Test application in GitHub Container Registry. However, you can build them locally if needed:
-  
   ```
-  docker build -t ghcr.io/lilachshay98/nginx:2 ./nginx
-  docker build -t ghcr.io/lilachshay98/test:2 ./test
+  cd FakeNews_Final_Project
   ```
 
-3. Configuration Files
+3. Set up Git LFS and download large datasets:
 
    * nginx.conf: The Nginx configuration file is located in the nginx/ directory. This file configures the Nginx server for proper operation.
    * requirements.txt: The requirements.txt file under the test/ directory contains the dependencies needed for the test application.
