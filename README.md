@@ -1,7 +1,7 @@
 # Fake News Detection Project README
 
-This project includes several Python files for analyzing data across diverse datasets, defines the CredScore algorithm for fake news detection,
-and provides the resulting figures.
+This project includes several Python files for analyzing data across diverse datasets, provides the resulting figures, and 
+defines the CredScore algorithm for fake news detection across the Internet and Twitter.
 
 ## Prerequisites
 
