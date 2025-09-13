@@ -5,21 +5,18 @@ import os
 import logging
 import tkinter as tk
 from tkinter import scrolledtext, ttk, messagebox
-from joblib import load
 import string
 import platform
 import pandas as pd
 import matplotlib
+
+from shared_logic import NewsClassifier
+
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import warnings
-from page_rank import extract_domain, scrape_outlinks_one, build_graph_from_edges, STATS
-import networkx as nx
-
-matplotlib.use("Agg")
-os.environ.setdefault("TK_SILENCE_DEPRECATION", "1")  # silence macOS Tk banner
-
 
 # Setup logging - redirect to file to keep console clean
 LOG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'classifier_app_ui.log')
@@ -34,10 +31,7 @@ logging.basicConfig(
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODELS_DIR = os.path.join(BASE_DIR, 'models')
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets')
-DOMAINS_FILE = os.path.join(BASE_DIR, 'data', 'stats', 'domains_summary.csv')
-BOTS_MODEL_DIR = os.path.join(MODELS_DIR, 'bots')
 
 # Create assets directory if it doesn't exist
 os.makedirs(ASSETS_DIR, exist_ok=True)
@@ -115,7 +109,7 @@ class ContentClassifierUI:
 
         self.header_label = tk.Label(
             header_frame,
-            text="Content Analysis System 🕵️",
+            text="Content Analysis System 🕵��",
             font=("Arial", 24, "bold"),
             fg=COLORS['header'],
             bg=COLORS['background']
@@ -585,54 +579,29 @@ class ContentClassifierUI:
         self.metric_entries[var_name] = entry
 
     def load_models(self):
-        """Load machine learning models and domain data"""
+        """Load machine learning models and domain data using NewsClassifier"""
         try:
-            # Load vectorizer for news classification
-            self.vectorizer_path = os.path.join(MODELS_DIR, 'tfidf_vectorizer.joblib')
-            logging.info(f"Loading vectorizer from {self.vectorizer_path}")
-            self.vectorizer = load(self.vectorizer_path)
+            logging.info("Initializing NewsClassifier to load models")
+            # Create an instance of NewsClassifier which will load all models
+            self.classifier = NewsClassifier()
 
-            # Load news classification models
-            self.models = {}
-            model_files = {
-                'naive_bayes': 'naive_bayes_model.joblib',
-                'logistic_regression': 'logistic_regression_model.joblib',
-                'decision_tree': 'decision_tree_model.joblib',
-                'random_forest': 'random_forest_model.joblib'
-            }
-
-            for name, filename in model_files.items():
-                model_path = os.path.join(MODELS_DIR, filename)
-                logging.info(f"Loading {name} model from {model_path}")
-
-                # Check if file exists before loading
-                if not os.path.exists(model_path):
-                    raise FileNotFoundError(f"Model file not found: {model_path}")
-
-                self.models[name] = load(model_path)
-
-            # Load bot detection model
-            logging.info("Loading bot detection model")
-            bot_model_path = os.path.join(BOTS_MODEL_DIR, 'random_forest_bot_detector_latest.joblib')
-            if not os.path.exists(bot_model_path):
-                # Find the latest model in the bots directory
-                bot_models = [f for f in os.listdir(BOTS_MODEL_DIR) if f.endswith('.joblib')
-                              and f.startswith('random_forest_bot_detector')]
-                if bot_models:
-                    latest_bot_model = max(bot_models)
-                    bot_model_path = os.path.join(BOTS_MODEL_DIR, latest_bot_model)
-
-            logging.info(f"Loading bot model from {bot_model_path}")
-            self.bot_model = load(bot_model_path)
+            # Store references to models that the UI needs to access
+            self.vectorizer = self.classifier.vectorizer
+            self.models = self.classifier.news_models
+            self.bot_model = self.classifier.bot_model
 
             # Load domain data
-            logging.info(f"Loading domain data from {DOMAINS_FILE}")
-            try:
-                self.domains_data = pd.read_csv(DOMAINS_FILE)
+            domain_stats = self.classifier.get_domain_stats()
+            if domain_stats:
+                # Convert domain stats to DataFrame format for compatibility
+                self.domains_data = pd.DataFrame([
+                    {'domain': domain, 'fake_ratio': ratio}
+                    for domain, ratio in domain_stats.items()
+                ])
                 logging.info(f"Loaded data for {len(self.domains_data)} domains")
-            except Exception as e:
-                logging.warning(f"Could not load domain data: {str(e)}")
+            else:
                 self.domains_data = None
+                logging.warning("No domain data was loaded")
 
             logging.info("All models loaded successfully")
             self.models_loaded = True
@@ -807,7 +776,9 @@ class ContentClassifierUI:
 
         # Extract domain from URL if URL is provided but domain is not
         if url and not domain:
-            extracted_domain = extract_domain(url)
+            # Use the extract_domain function from shared_logic (via our classifier)
+            extracted_domain = self.classifier.extract_domain(url) if hasattr(self.classifier,
+                                                                              'extract_domain') else None
             if extracted_domain:
                 domain = extracted_domain
                 self.domain_entry.delete(0, tk.END)
@@ -818,138 +789,19 @@ class ContentClassifierUI:
         self.status_bar.config(text="Analyzing news article...")
 
         try:
-            # Clean the text
-            cleaned_text = self.clean_text(news_text)
+            # Use the classifier to analyze the text
+            account_date = ""  # Not applicable for news
+            result = self.classifier.predict(news_text, domain, account_date, url)
 
-            # Vectorize
-            X = self.vectorizer.transform([cleaned_text])
+            if result:
+                # Add the result type for UI processing
+                result['result_type'] = 'news'
 
-            # Make predictions with each model
-            results = {}
-            probabilities = {}
-
-            for name, model in self.models.items():
-                # Get prediction
-                prediction = model.predict(X)[0]
-                results[name] = prediction
-
-                # Get probability if the model supports it
-                try:
-                    proba = model.predict_proba(X)[0]
-                    probabilities[name] = proba
-                except:
-                    # Some models might not have predict_proba
-                    probabilities[name] = [0.5, 0.5] if prediction == 1 else [0.5, 0.5]
-
-            # Calculate voting result
-            votes = list(results.values())
-            model_score = sum(votes) / len(votes)  # Score between 0 and 1
-
-            # Calculate average probabilities
-            avg_proba = [0, 0]
-            for name in probabilities:
-                avg_proba[0] += probabilities[name][0]
-                avg_proba[1] += probabilities[name][1]
-
-            avg_proba[0] /= len(probabilities)
-            avg_proba[1] /= len(probabilities)
-
-            # Initialize cumulative scores (higher means more likely to be REAL)
-            # Start with model probability score
-            cumulative_real_score = avg_proba[1]
-            cumulative_fake_score = avg_proba[0]
-
-            # Track contribution from each source for logging
-            score_contributions = {
-                'model_probability': avg_proba[1] - 0.5  # Center around 0 for logging
-            }
-
-            # Apply domain reputation adjustment if domain is provided and domain data is available
-            domain_info = None
-            page_rank = 0.5  # Default neutral value
-
-            if domain and hasattr(self, 'domains_data') and self.domains_data is not None:
-                try:
-                    # Extract just the domain name without protocol, www, etc.
-                    clean_domain = domain.lower()
-                    if '://' in clean_domain:
-                        clean_domain = clean_domain.split('://')[1]
-                    if clean_domain.startswith('www.'):
-                        clean_domain = clean_domain[4:]
-                    if '/' in clean_domain:
-                        clean_domain = clean_domain.split('/')[0]
-
-                    # Look for the domain in our dataset
-                    domain_match = self.domains_data[
-                        self.domains_data['domain'].str.contains(clean_domain, case=False, na=False)]
-
-                    if not domain_match.empty:
-                        # Get the first matching domain info
-                        domain_info = domain_match.iloc[0].to_dict()
-
-                        # Calculate adjustment factor based on domain's fake news ratio
-                        # Higher fake ratio increases fake probability
-                        if 'fake_ratio' in domain_info:
-                            fake_ratio = float(domain_info['fake_ratio'])
-
-                            # Apply domain adjustment to the scores
-                            # Increase fake score based on domain reputation
-                            domain_adjustment = min(0.3, fake_ratio * 0.5)  # Cap the adjustment at 30%
-
-                            # Add to cumulative scores
-                            cumulative_fake_score += domain_adjustment
-                            cumulative_real_score -= domain_adjustment
-
-                            score_contributions[
-                                'domain_reputation'] = -domain_adjustment  # Negative because it reduces "real" score
-
-                            logging.info(f"Applied domain adjustment for {domain}: fake_ratio={fake_ratio}, " +
-                                         f"adjustment={domain_adjustment}")
-
-                            # Get page rank and use it as a factor (higher page rank = more likely real)
-                            if url:
-                                page_rank = self.get_url_pagerank_score(url)
-                                page_rank_adjustment = (page_rank - 0.5) * 0.4  # Scale the effect (max ±0.2)
-
-                                cumulative_real_score += page_rank_adjustment
-                                cumulative_fake_score -= page_rank_adjustment
-
-                                score_contributions['page_rank'] = page_rank_adjustment
-
-                                logging.info(
-                                    f"Applied page rank adjustment: {page_rank}, adjustment={page_rank_adjustment}")
-                except Exception as e:
-                    logging.error(f"Error processing domain information: {str(e)}")
-
-            # Calculate final probability based on cumulative scores
-            # Normalize to ensure they sum to 1
-            total_score = cumulative_real_score + cumulative_fake_score
-            avg_proba[1] = cumulative_real_score / total_score
-            avg_proba[0] = cumulative_fake_score / total_score
-
-            # Make final prediction based on normalized scores
-            final_prediction = 1 if avg_proba[1] > avg_proba[0] else 0
-
-            logging.info(f"Final scores - Real: {cumulative_real_score:.4f}, Fake: {cumulative_fake_score:.4f}")
-            logging.info(f"Score contributions: {score_contributions}")
-
-            # Format results
-            result = {
-                'prediction': final_prediction,
-                'label': 'REAL' if final_prediction == 1 else 'FAKE',
-                'confidence': avg_proba[final_prediction] * 100,
-                'real_probability': avg_proba[1] * 100,
-                'fake_probability': avg_proba[0] * 100,
-                'model_votes': results,
-                'probabilities': probabilities,
-                'domain_info': domain_info,
-                'page_rank': page_rank,
-                'result_type': 'news'
-            }
-
-            # Display results
-            self.display_results(result)
-            self.status_bar.config(text="News article analysis complete")
+                # Display results
+                self.display_results(result)
+                self.status_bar.config(text="News article analysis complete")
+            else:
+                raise Exception("Analysis returned no results")
 
         except Exception as e:
             logging.error(f"Error analyzing text: {str(e)}")
@@ -1008,8 +860,7 @@ class ContentClassifierUI:
             # Calculate screen_name_length
             user_data['screen_name_length'] = len(user_data['screen_name'])
 
-            # Add verification status (create UI element for this if it's important)
-            # For now, check if we have a dedicated verified field in the form, otherwise default to False
+            # Add verification status
             user_data['verified'] = False
             if 'verified' in self.metric_entries:
                 verified_value = self.metric_entries['verified'].get().strip().lower()
@@ -1050,11 +901,11 @@ class ContentClassifierUI:
                 warnings.filterwarnings("ignore", category=UserWarning,
                                         message="X has feature names, but RandomForestClassifier was fitted without feature names")
 
-                # Run bot detection
-                bot_result = self.predict_bot(tweet_text, user_data)
+                # Use the shared logic's predict_bot method
+                bot_result = self.classifier.predict_bot(tweet_text, user_data)
 
-                # Also analyze the tweet content
-                content_result = self.predict(tweet_text, "", account_date)
+                # Also analyze the tweet content using the shared logic's predict method
+                content_result = self.classifier.predict(tweet_text, "", account_date)
 
             # Format combined results
             combined_result = {
@@ -1072,237 +923,11 @@ class ContentClassifierUI:
             messagebox.showerror("Analysis Error", f"An error occurred during analysis: {str(e)}")
             self.status_bar.config(text="Analysis failed")
 
-    def predict(self, text, domain, date):
-        """Make content predictions using news classification models"""
-        try:
-            # Clean the text
-            cleaned_text = self.clean_text(text)
-
-            # Vectorize
-            X = self.vectorizer.transform([cleaned_text])
-
-            # Make predictions with each model
-            results = {}
-            probabilities = {}
-
-            for name, model in self.models.items():
-                # Get prediction
-                prediction = model.predict(X)[0]
-                results[name] = prediction
-
-                # Get probability if the model supports it
-                try:
-                    proba = model.predict_proba(X)[0]
-                    probabilities[name] = proba
-                except:
-                    # Some models might not have predict_proba
-                    probabilities[name] = [0.5, 0.5] if prediction == 1 else [0.5, 0.5]
-
-            # Calculate voting result
-            votes = list(results.values())
-            model_score = sum(votes) / len(votes)  # Score between 0 and 1
-
-            # Calculate average probabilities
-            avg_proba = [0, 0]
-            for name in probabilities:
-                avg_proba[0] += probabilities[name][0]
-                avg_proba[1] += probabilities[name][1]
-
-            avg_proba[0] /= len(probabilities)
-            avg_proba[1] /= len(probabilities)
-
-            # Initialize cumulative scores (higher means more likely to be REAL)
-            # Start with model probability score
-            cumulative_real_score = avg_proba[1]
-            cumulative_fake_score = avg_proba[0]
-
-            # Track contribution from each source for logging
-            score_contributions = {
-                'model_probability': avg_proba[1] - 0.5  # Center around 0 for logging
-            }
-
-            # Apply domain reputation adjustment if domain is provided and domain data is available
-            domain_info = None
-            page_rank = 0.5  # Default neutral value
-
-            if domain and hasattr(self, 'domains_data') and self.domains_data is not None:
-                try:
-                    # Extract just the domain name without protocol, www, etc.
-                    clean_domain = domain.lower()
-                    if '://' in clean_domain:
-                        clean_domain = clean_domain.split('://')[1]
-                    if clean_domain.startswith('www.'):
-                        clean_domain = clean_domain[4:]
-                    if '/' in clean_domain:
-                        clean_domain = clean_domain.split('/')[0]
-
-                    # Look for the domain in our dataset
-                    domain_match = self.domains_data[
-                        self.domains_data['domain'].str.contains(clean_domain, case=False, na=False)]
-
-                    if not domain_match.empty:
-                        # Get the first matching domain info
-                        domain_info = domain_match.iloc[0].to_dict()
-
-                        # Calculate adjustment factor based on domain's fake news ratio
-                        # Higher fake ratio increases fake probability
-                        if 'fake_ratio' in domain_info:
-                            fake_ratio = float(domain_info['fake_ratio'])
-
-                            # Apply domain adjustment to the scores
-                            # Increase fake score based on domain reputation
-                            domain_adjustment = min(0.3, fake_ratio * 0.5)  # Cap the adjustment at 30%
-
-                            # Add to cumulative scores
-                            cumulative_fake_score += domain_adjustment
-                            cumulative_real_score -= domain_adjustment
-
-                            score_contributions[
-                                'domain_reputation'] = -domain_adjustment  # Negative because it reduces "real" score
-
-                            logging.info(f"Applied domain adjustment for {domain}: fake_ratio={fake_ratio}, " +
-                                         f"adjustment={domain_adjustment}")
-
-                            # Get page rank and use it as a factor (higher page rank = more likely real)
-                            if url:
-                                page_rank = self.get_url_pagerank_score(url)
-                                page_rank_adjustment = (page_rank - 0.5) * 0.4  # Scale the effect (max ±0.2)
-
-                                cumulative_real_score += page_rank_adjustment
-                                cumulative_fake_score -= page_rank_adjustment
-
-                                score_contributions['page_rank'] = page_rank_adjustment
-
-                                logging.info(
-                                    f"Applied page rank adjustment: {page_rank}, adjustment={page_rank_adjustment}")
-                except Exception as e:
-                    logging.error(f"Error processing domain information: {str(e)}")
-
-            # Calculate final probability based on cumulative scores
-            # Normalize to ensure they sum to 1
-            total_score = cumulative_real_score + cumulative_fake_score
-            avg_proba[1] = cumulative_real_score / total_score
-            avg_proba[0] = cumulative_fake_score / total_score
-
-            return {
-                'prediction': 1 if avg_proba[1] > avg_proba[0] else 0,
-                'label': 'REAL' if avg_proba[1] > avg_proba[0] else 'FAKE',
-                'confidence': avg_proba[1] * 100,
-                'real_probability': avg_proba[1] * 100,
-                'fake_probability': avg_proba[0] * 100,
-                'model_votes': results
-            }
-
-        except Exception as e:
-            logging.error(f"Error making prediction: {str(e)}")
-            return None
-
     def predict_bot(self, tweet_text, user_data):
-        """Analyze if a tweet is from a bot based on user data"""
-        try:
-            if self.bot_model is None:
-                logging.error("Bot detection model not available")
-                return {
-                    'prediction': None,
-                    'label': 'UNKNOWN',
-                    'message': 'Bot detection model not available',
-                    'confidence': 0
-                }
-
-            # Prepare features for bot detection
-            features = {}
-
-            # Required features based on the bot model
-            required_features = [
-                'followers_count', 'friends_count', 'statuses_count',
-                'favourites_count', 'listed_count', 'screen_name_length',
-                'retweets', 'replies', 'favoriteC', 'hashtag',
-                'mentions', 'intertime', 'ffratio', 'favorites',
-                'uniqueHashtags', 'uniqueMentions', 'uniqueURL'
-            ]
-
-            # Fill available features from user_data
-            for feature in required_features:
-                if feature in user_data:
-                    features[feature] = user_data[feature]
-                else:
-                    features[feature] = 0.0
-
-            # Convert to DataFrame with appropriate columns that the model expects
-            X = pd.DataFrame([features])
-
-            # Add URL field which was in the original dataset
-            if 'url' not in X.columns:
-                X['url'] = 0.0
-
-            # Add 'listed' field which appears in the feature importance file
-            if 'listed' not in X.columns:
-                X['listed'] = X['listed_count'] if 'listed_count' in X.columns else 0.0
-
-            # Create polynomial features (interactions between features)
-            # Based on the feature importance file, we know the model was trained with these interactions
-            core_features = ['screen_name_length', 'statuses_count', 'followers_count', 'friends_count',
-                             'favourites_count']
-
-            # Add polynomial feature interactions
-            interaction_pairs = [
-                ('screen_name_length', 'statuses_count'),
-                ('followers_count', 'friends_count'),
-                ('screen_name_length', 'friends_count'),
-                ('screen_name_length', 'followers_count'),
-                ('followers_count', 'favourites_count'),
-                ('friends_count', 'favourites_count'),
-                ('screen_name_length', 'favourites_count'),
-                ('statuses_count', 'followers_count'),
-                ('statuses_count', 'friends_count'),
-                ('statuses_count', 'favourites_count')
-            ]
-
-            for feat1, feat2 in interaction_pairs:
-                interaction_name = f"{feat1} {feat2}"
-                X[interaction_name] = X[feat1] * X[feat2]
-
-            # Verify we have all 29 features
-            expected_features = set([
-                'screen_name_length', 'statuses_count', 'followers_count', 'friends_count', 'favourites_count',
-                'listed_count', 'url', 'retweets', 'replies', 'favoriteC', 'hashtag', 'mentions', 'intertime',
-                'ffratio', 'favorites', 'uniqueHashtags', 'uniqueMentions', 'uniqueURL', 'listed',
-                'screen_name_length statuses_count', 'followers_count friends_count',
-                'screen_name_length friends_count',
-                'screen_name_length followers_count', 'followers_count favourites_count',
-                'friends_count favourites_count',
-                'screen_name_length favourites_count', 'statuses_count followers_count', 'statuses_count friends_count',
-                'statuses_count favourites_count'
-            ])
-
-            # Check if we're missing any features and add them
-            missing_features = expected_features - set(X.columns)
-            for feat in missing_features:
-                X[feat] = 0.0  # Add any missing features with default value
-
-            # Make the prediction
-            prediction = self.bot_model.predict(X)[0]
-            probabilities = self.bot_model.predict_proba(X)[0]
-
-            # Bot is usually labeled as 0, human as 1
-            is_bot = prediction == 0
-
-            return {
-                'prediction': int(is_bot),
-                'label': 'BOT' if is_bot else 'HUMAN',
-                'confidence': probabilities[0 if is_bot else 1] * 100,
-                'bot_probability': probabilities[0] * 100,
-                'human_probability': probabilities[1] * 100
-            }
-
-        except Exception as e:
-            logging.error(f"Error in bot prediction: {str(e)}")
-            return {
-                'prediction': None,
-                'label': 'ERROR',
-                'message': f"Bot detection error: {str(e)}",
-                'confidence': 0
-            }
+        """Analyze if a tweet is from a bot using the classifier from shared_logic"""
+        # This method is now just a stub that redirects to the shared implementation
+        # in NewsClassifier. It shouldn't be called directly anymore - use self.classifier.predict_bot()
+        return self.classifier.predict_bot(tweet_text, user_data)
 
     def display_results(self, result):
         """Display the analysis results"""
@@ -1631,7 +1256,8 @@ class ContentClassifierUI:
 
     def load_example_tweet(self):
         """Load example data for tweet bot detection"""
-        example_tweet = "Just published 10 amazing tips for gaining followers fast! Check out the link below to learn more. #followers #socialmedia #growth #marketing"
+        example_tweet = "Just published 10 amazing tips for gaining followers fast! Check out the link below to learn " \
+                        "more. #followers #socialmedia #growth #marketing "
 
         self.tweet_text.delete("1.0", tk.END)
         self.tweet_text.insert(tk.END, example_tweet)
