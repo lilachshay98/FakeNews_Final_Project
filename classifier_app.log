@@ -42,3 +42,20 @@
 2025-09-13 12:26:05,070 - INFO - Loading random_forest model from /Users/lilachshay/fake_news_detection/models/random_forest_model.joblib
 2025-09-13 12:26:05,403 - INFO - Loaded bot detection model from /Users/lilachshay/fake_news_detection/models/bots/random_forest_bot_detector_latest.joblib
 2025-09-13 12:26:05,404 - INFO - All models loaded successfully
+2025-09-13 12:52:41,072 - INFO - Starting classification application...
+2025-09-13 12:52:41,072 - INFO - Loading vectorizer from /Users/lilachshay/fake_news_detection/models/tfidf_vectorizer.joblib
+2025-09-13 12:52:42,697 - INFO - Loading naive_bayes model from /Users/lilachshay/fake_news_detection/models/naive_bayes_model.joblib
+2025-09-13 12:52:42,704 - INFO - Loading logistic_regression model from /Users/lilachshay/fake_news_detection/models/logistic_regression_model.joblib
+2025-09-13 12:52:43,031 - INFO - Loading decision_tree model from /Users/lilachshay/fake_news_detection/models/decision_tree_model.joblib
+2025-09-13 12:52:43,213 - INFO - Loading random_forest model from /Users/lilachshay/fake_news_detection/models/random_forest_model.joblib
+2025-09-13 12:52:43,534 - INFO - Loaded bot detection model from /Users/lilachshay/fake_news_detection/models/bots/random_forest_bot_detector_latest.joblib
+2025-09-13 12:52:43,535 - INFO - All models loaded successfully
+2025-09-13 12:53:22,858 - WARNING - Community score is not a number: {'account_id': '1301790704050593793', 'account_name': 'lilach', 'community_id': 21, 'predicted_label': '0', 'label_type': 'bot', 'bot_probability': 0.5, 'human_probability': 0.5, 'action': 'created_new_community', 'community_type': 'new', 'confidence': 0.5}
+2025-09-13 20:14:50,994 - INFO - Starting classification application...
+2025-09-13 20:14:50,995 - INFO - Loading vectorizer from /Users/lilachshay/fake_news_detection/models/tfidf_vectorizer.joblib
+2025-09-13 20:14:52,230 - INFO - Loading naive_bayes model from /Users/lilachshay/fake_news_detection/models/naive_bayes_model.joblib
+2025-09-13 20:14:52,238 - INFO - Loading logistic_regression model from /Users/lilachshay/fake_news_detection/models/logistic_regression_model.joblib
+2025-09-13 20:14:52,458 - INFO - Loading decision_tree model from /Users/lilachshay/fake_news_detection/models/decision_tree_model.joblib
+2025-09-13 20:14:52,563 - INFO - Loading random_forest model from /Users/lilachshay/fake_news_detection/models/random_forest_model.joblib
+2025-09-13 20:14:52,844 - INFO - Loaded bot detection model from /Users/lilachshay/fake_news_detection/models/bots/random_forest_bot_detector_latest.joblib
+2025-09-13 20:14:52,844 - INFO - All models loaded successfully

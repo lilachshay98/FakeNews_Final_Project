@@ -19,7 +19,7 @@ logging.basicConfig(
 # Path definitions
 BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 RAW_DATA_DIR = BASE_DIR / "data" / "raw" / "bots" / "cresci-2017" / "datasets_full.csv"
-PROCESSED_DATA_DIR = BASE_DIR / "data" / "processed" / "bots"
+PROCESSED_DATA_DIR = BASE_DIR / "data" / "stats" / "bots"
 
 # Create output directory if it doesn't exist
 os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
@@ -40,6 +40,7 @@ GENUINE_DATASETS = [
     'genuine_accounts.csv'
 ]
 
+
 def clean_user_data(df):
     """Clean and preprocess user data"""
     logging.info(f"Cleaning user data: {df.shape[0]} records")
@@ -52,17 +53,18 @@ def clean_user_data(df):
     before_cols = df.shape[1]
     df = df.dropna(axis=1, thresh=int(df.shape[0] * (1 - missing_threshold)))
     after_cols = df.shape[1]
-    logging.info(f"Dropped {before_cols - after_cols} columns with more than {missing_threshold*100}% missing values")
+    logging.info(f"Dropped {before_cols - after_cols} columns with more than {missing_threshold * 100}% missing values")
 
     # Twitter API uses these common date formats
     date_formats = [
         '%a %b %d %H:%M:%S %z %Y',  # "Wed May 04 23:30:37 +0000 2011"
-        '%Y-%m-%d %H:%M:%S',         # "2011-05-05 01:30:37"
-        '%Y-%m-%d'                   # "2011-05-05"
+        '%Y-%m-%d %H:%M:%S',  # "2011-05-05 01:30:37"
+        '%Y-%m-%d'  # "2011-05-05"
     ]
 
     # Convert datetime columns
-    date_cols = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower() or 'created_at' in col.lower()]
+    date_cols = [col for col in df.columns if
+                 'date' in col.lower() or 'time' in col.lower() or 'created_at' in col.lower()]
     for col in date_cols:
         if col in df.columns:
             # Try each format in order
@@ -83,7 +85,7 @@ def clean_user_data(df):
 
     # Convert numeric columns
     numeric_cols = ['followers_count', 'friends_count', 'statuses_count', 'favourites_count',
-                   'listed_count', 'default_profile', 'default_profile_image', 'verified']
+                    'listed_count', 'default_profile', 'default_profile_image', 'verified']
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -105,6 +107,7 @@ def clean_user_data(df):
 
     return df
 
+
 def clean_tweet_data(df):
     """Clean and preprocess tweet data"""
     logging.info(f"Cleaning tweet data: {df.shape[0]} records")
@@ -117,17 +120,18 @@ def clean_tweet_data(df):
     before_cols = df.shape[1]
     df = df.dropna(axis=1, thresh=int(df.shape[0] * (1 - missing_threshold)))
     after_cols = df.shape[1]
-    logging.info(f"Dropped {before_cols - after_cols} columns with more than {missing_threshold*100}% missing values")
+    logging.info(f"Dropped {before_cols - after_cols} columns with more than {missing_threshold * 100}% missing values")
 
     # Twitter API uses these common date formats
     date_formats = [
         '%a %b %d %H:%M:%S %z %Y',  # "Wed May 04 23:30:37 +0000 2011"
-        '%Y-%m-%d %H:%M:%S',         # "2011-05-05 01:30:37"
-        '%Y-%m-%d'                   # "2011-05-05"
+        '%Y-%m-%d %H:%M:%S',  # "2011-05-05 01:30:37"
+        '%Y-%m-%d'  # "2011-05-05"
     ]
 
     # Convert datetime columns
-    date_cols = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower() or 'created_at' in col.lower()]
+    date_cols = [col for col in df.columns if
+                 'date' in col.lower() or 'time' in col.lower() or 'created_at' in col.lower()]
     for col in date_cols:
         if col in df.columns:
             # Try each format in order
@@ -157,9 +161,11 @@ def clean_tweet_data(df):
         df['text_length'] = df['text'].str.len()
         df['hashtag_count'] = df['text'].str.count(r'#\w+')
         df['mention_count'] = df['text'].str.count(r'@\w+')
-        df['url_count'] = df['text'].str.count(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+        df['url_count'] = df['text'].str.count(
+            r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
 
     return df
+
 
 def process_dataset(dataset_name, is_bot):
     """Process a single dataset folder"""
@@ -224,13 +230,13 @@ def process_dataset(dataset_name, is_bot):
 
         # Read tweets file with the current encoding
         tweets_df = pd.read_csv(tweets_file,
-                               header=None,
-                               names=tweet_columns,
-                               quotechar='"',
+                                header=None,
+                                names=tweet_columns,
+                                quotechar='"',
                                 encoding='utf-8',
-                               escapechar='\\',
-                               on_bad_lines='warn',
-                               low_memory=False,)
+                                escapechar='\\',
+                                on_bad_lines='warn',
+                                low_memory=False, )
 
         # Add dataset information
         tweets_df['dataset'] = dataset_name
@@ -247,6 +253,7 @@ def process_dataset(dataset_name, is_bot):
         logging.warning(f"Tweets file not found in {dataset_name}")
 
     return result
+
 
 def main():
     """Main function to process all datasets"""
@@ -341,7 +348,7 @@ def main():
                 # Calculate time differences between consecutive tweets
                 if len(sorted_times) > 1:
                     for i in range(1, len(sorted_times)):
-                        diff_seconds = (sorted_times[i] - sorted_times[i-1]).total_seconds()
+                        diff_seconds = (sorted_times[i] - sorted_times[i - 1]).total_seconds()
                         time_diffs.append(diff_seconds)
 
             # Calculate time-based features
@@ -408,13 +415,16 @@ def main():
     bot_counts_comprehensive = combined_df['is_bot'].value_counts()
     logging.info("=== COMPREHENSIVE DATASET STATISTICS ===")
     logging.info(f"Total accounts: {len(combined_df)}")
-    logging.info(f"Bot accounts: {bot_counts_comprehensive.get(1, 0)} ({bot_counts_comprehensive.get(1, 0)/len(combined_df)*100:.1f}%)")
-    logging.info(f"Human accounts: {bot_counts_comprehensive.get(0, 0)} ({bot_counts_comprehensive.get(0, 0)/len(combined_df)*100:.1f}%)")
+    logging.info(
+        f"Bot accounts: {bot_counts_comprehensive.get(1, 0)} ({bot_counts_comprehensive.get(1, 0) / len(combined_df) * 100:.1f}%)")
+    logging.info(
+        f"Human accounts: {bot_counts_comprehensive.get(0, 0)} ({bot_counts_comprehensive.get(0, 0) / len(combined_df) * 100:.1f}%)")
 
     accounts_with_tweets = combined_df['has_tweets'].sum()
     accounts_without_tweets = len(combined_df) - accounts_with_tweets
-    logging.info(f"Accounts with tweets: {accounts_with_tweets} ({accounts_with_tweets/len(combined_df)*100:.1f}%)")
-    logging.info(f"Accounts without tweets (Nil): {accounts_without_tweets} ({accounts_without_tweets/len(combined_df)*100:.1f}%)")
+    logging.info(f"Accounts with tweets: {accounts_with_tweets} ({accounts_with_tweets / len(combined_df) * 100:.1f}%)")
+    logging.info(
+        f"Accounts without tweets (Nil): {accounts_without_tweets} ({accounts_without_tweets / len(combined_df) * 100:.1f}%)")
     logging.info("=====================================")
 
 

@@ -2,13 +2,10 @@ from sklearn.metrics import accuracy_score
 
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import LinearSVC
-from sklearn.ensemble import GradientBoostingClassifier, VotingClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 import logging
-from scipy.sparse import hstack, csr_matrix
-import numpy as np
 
-from ClassificationModel.src.common_utils import load_model, save_model, get_models_dir, get_split_data, tokenize_text
+from common_utils import load_model, save_model, get_models_dir, get_split_data, tokenize_text
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -38,7 +35,6 @@ def fit_models(X_train_tfidf, X_test_tfidf, y_train, y_test):
             'model': GradientBoostingClassifier(n_estimators=200, learning_rate=0.05, max_depth=7),
             'requires_non_negative': False
         }
-        # SVM removed as requested
     }
 
     fitted_models = {}

@@ -19,6 +19,7 @@ except AttributeError:
 else:
     ssl._create_default_https_context = _create_unverified_https_context
 
+
 def clean_text(text):
     # Lowercase
     text = text.lower()
@@ -33,7 +34,6 @@ def load_and_clean_data(raw_data_path):
     logging.info(f'Loading datasets from {raw_data_path}...')
     fake = pd.read_csv(os.path.join(raw_data_path, 'Fake.csv'))
     true = pd.read_csv(os.path.join(raw_data_path, 'True.csv'))
-    # true_n_fake = pd.read_csv(os.path.join(raw_data_path, 'WELFake_Dataset.csv'))
 
     logging.info('Standardizing columns...')
     fake['label'] = 0
@@ -42,16 +42,13 @@ def load_and_clean_data(raw_data_path):
     logging.info('Cleaning text...')
     fake.drop(columns=["title", "date", "subject"], inplace=True)
     true.drop(columns=["title", "date", "subject"], inplace=True)
-    # true_n_fake.drop(columns=["title"], inplace=True)
 
     # Drop any unnamed columns in all dataframes
     fake = fake.loc[:, ~fake.columns.str.contains('^Unnamed')]
     true = true.loc[:, ~true.columns.str.contains('^Unnamed')]
-    # true_n_fake = true_n_fake.loc[:, ~true_n_fake.columns.str.contains('^Unnamed')]
 
     fake.head()
     true.head()
-    # true_n_fake.head()
 
     logging.info('Combining datasets...')
     combined = pd.concat([fake, true], ignore_index=True)
@@ -65,6 +62,7 @@ def load_and_clean_data(raw_data_path):
     combined.info()
     combined.drop_duplicates(inplace=True)
     return combined
+
 
 def save_cleaned_data(df, out_path):
     logging.info(f'Saving cleaned data to {out_path}...')
@@ -85,8 +83,8 @@ def download_nltk_resources():
         logging.error(f'Error downloading NLTK resources: {e}')
         return False
 
-def process_text(text):
 
+def process_text(text):
     if pd.isna(text) or not isinstance(text, str):
         return []  # Return empty list for non-text inputs
 
@@ -151,7 +149,6 @@ def get_cleaned_data(combined_data):
     return result_df
 
 
-
 if __name__ == '__main__':
     # Download NLTK resources first
     download_nltk_resources()
@@ -159,7 +156,7 @@ if __name__ == '__main__':
     # Define correct paths
     base_dir = os.path.dirname(os.path.dirname(__file__))  # Get ClassificationModel directory
     raw_data_path = os.path.join(base_dir, 'data', 'raw')
-    processed_dir = os.path.join(base_dir, 'data', 'processed')
+    processed_dir = os.path.join(base_dir, 'data', 'stats')
 
     # Create processed directory if it doesn't exist
     if not os.path.exists(processed_dir):

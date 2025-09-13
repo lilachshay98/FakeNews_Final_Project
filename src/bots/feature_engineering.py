@@ -23,6 +23,7 @@ logging.basicConfig(
 BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 PROCESSED_DATA_DIR = BASE_DIR / "data" / "processed" / "bots"
 
+
 def load_cresci_comprehensive_dataset(file_path=None):
     """
     Load the Cresci 2017 comprehensive dataset into a pandas DataFrame
@@ -59,6 +60,7 @@ def load_cresci_comprehensive_dataset(file_path=None):
         logging.error(f"Error loading Cresci dataset: {str(e)}")
         return None
 
+
 def load_tweets_and_users_data():
     """
     Load both tweets and users data for feature engineering
@@ -87,6 +89,7 @@ def load_tweets_and_users_data():
     except Exception as e:
         logging.error(f"Error loading data: {str(e)}")
         return None, None
+
 
 def parse_entities_field(tweets_df):
     """
@@ -168,6 +171,7 @@ def parse_entities_field(tweets_df):
         tweets_df['mentions'] = tweets_df['entities'].apply(extract_mentions)
 
     return tweets_df
+
 
 def extract_features(tweets_df, users_df):
     """
@@ -273,7 +277,8 @@ def extract_features(tweets_df, users_df):
         retweet_ratio = retweet_count / tweet_count
 
         # 2. replies: ratio between reply count and tweet count
-        reply_count = user_tweets['in_reply_to_status_id'].notna().sum() if 'in_reply_to_status_id' in user_tweets.columns else 0
+        reply_count = user_tweets[
+            'in_reply_to_status_id'].notna().sum() if 'in_reply_to_status_id' in user_tweets.columns else 0
         reply_ratio = reply_count / tweet_count
 
         # 3. favoriteC: ratio between favorited tweets and tweet count
@@ -381,6 +386,7 @@ def extract_features(tweets_df, users_df):
 
     return features_df
 
+
 def save_features(features_df, output_path=None):
     """
     Save the extracted features to a CSV file
@@ -404,6 +410,7 @@ def save_features(features_df, output_path=None):
     logging.info(f"Features saved to {output_path}")
     return output_path
 
+
 def main():
     """Main function to run the feature engineering pipeline"""
     logging.info("Starting feature engineering process for Cresci 2017 dataset")
@@ -422,6 +429,7 @@ def main():
     save_features(features_df)
 
     logging.info("Feature engineering process completed")
+
 
 if __name__ == "__main__":
     main()

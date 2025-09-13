@@ -30,7 +30,7 @@ logging.basicConfig(
 
 # Path definitions
 BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-FEATURES_PATH = BASE_DIR / "data" / "processed" / "bots" / "cresci2017_features.csv"
+FEATURES_PATH = BASE_DIR / "data" / "stats" / "cresci2017_features.csv"
 MODEL_DIR = BASE_DIR / "models" / "bots"
 
 # Create model directory if it doesn't exist

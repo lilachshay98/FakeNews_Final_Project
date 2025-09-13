@@ -75,7 +75,7 @@ def load_processed_data():
     """
     # Get the path to the processed data file
     base_dir = os.path.dirname(os.path.dirname(__file__))
-    processed_data_path = os.path.join(base_dir, 'data', 'processed', 'cleaned_combined.csv')
+    processed_data_path = os.path.join(base_dir, 'data', 'stats', 'cleaned_combined.csv')
 
     # Log the data loading process
     logging.info(f"Loading data from {processed_data_path}...")
