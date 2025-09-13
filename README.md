@@ -15,9 +15,10 @@ These instructions will get you a copy of the project up and running on your loc
 
 1. Clone the repository  
    Clone this repository to your local machine using the following command:
- ```
+
+   ```
   git clone https://github.com/lilachshay98/FakeNews_Final_Project.git
-  ```
+    ```
 
 2. Navigate into the project directory:
 
