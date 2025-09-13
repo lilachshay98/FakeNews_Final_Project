@@ -28,8 +28,9 @@ Clone this repository to your local machine using the following command:
 
 3. Set up Git LFS and download large datasets:
 
-   * nginx.conf: The Nginx configuration file is located in the nginx/ directory. This file configures the Nginx server for proper operation.
-   * requirements.txt: The requirements.txt file under the test/ directory contains the dependencies needed for the test application.
-   * The test.py file is a Python script that sends HTTP requests to the Nginx server and verifies that it responds correctly. The test script is responsible for confirming that the Nginx server is functioning properly.
-
+  ```
+  git lfs install
+  git lfs pull
+  git lfs checkout
+  ```
 
