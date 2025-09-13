@@ -10,30 +10,26 @@ defines the CredScore algorithm for fake news detection across the Internet and 
   Git LFS is required to handle large datasets such as the Twitbot-20 dataset files.
 
 ## Getting Started
-
 These instructions will get you a copy of the project up and running on your local machine for development or testing purposes.
 
-1. Clone the Repository
-   
-Clone this repository to your local machine using the following command:
+1. Clone the Repository  
+   Clone this repository to your local machine using the following command:
 
-    ```
-    git clone https://github.com/lilachshay98/FakeNews_Final_Project.git
-    ```
-
+       ```
+       git clone https://github.com/lilachshay98/FakeNews_Final_Project.git
+       ```
 
 2. Navigate into the project directory:
 
-    ```
-    cd FakeNews_Final_Project
-    ```
+       ```
+       cd FakeNews_Final_Project
+       ```
 
 3. Set up Git LFS and download large datasets:
 
-    ```
-    git lfs install
-    git lfs pull
-    git lfs checkout
-    ```
-
+       ```
+       git lfs install
+       git lfs pull
+       git lfs checkout
+       ```
 
