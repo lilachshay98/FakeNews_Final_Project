@@ -7,26 +7,74 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score  # used only for AUC
+from sklearn.metrics import roc_auc_score
 
 # Paths
-ROOT = Path(__file__).resolve().parents[1]  # goes from src/ up to project root
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "raw"
 STATS = ROOT / "data" / "stats"
 STATS.mkdir(parents=True, exist_ok=True)
 
-NONEY = {"", "none", "null", "na", "n/a", "none ", " null", " None", "None "}
-TW_FORMAT = "%a %b %d %H:%M:%S %z %Y"  # e.g., Tue Feb 04 12:13:10 +0000 2020
+NONE_VALS = {"", "none", "null", "na", "n/a", "none ", " null", " None", "None "}
+TW_FORMAT = "%a %b %d %H:%M:%S %z %Y"
 
 
 def deNone(x):
+    """
+    Clean null-like values from input data.
+
+    Converts various representations of null values to Python None
+    for consistent handling in downstream processing.
+
+    Parameters
+    ----------
+    x : any
+        Input value to check for null-like representations.
+
+    Returns
+    -------
+    value : str or None
+        Stripped string value if input represents valid data,
+        None if input represents null/missing data.
+
+    Notes
+    -----
+    Recognizes the following as null values (case-insensitive):
+    "", "none", "null", "na", "n/a", and variations with whitespace.
+    """
     if x is None:
         return None
     s = str(x).strip()
-    return None if s.lower() in NONEY else s
+    return None if s.lower() in NONE_VALS else s
 
 
 def to_int(x, default=0):
+    """
+    Convert input to integer with fallback handling.
+
+    Safely converts various input types to integer values,
+    handling common edge cases like comma-separated numbers
+    and floating point representations.
+
+    Parameters
+    ----------
+    x : any
+        Input value to convert to integer.
+    default : int, default=0
+        Default value to return if conversion fails.
+
+    Returns
+    -------
+    value : int
+        Converted integer value or default if conversion fails.
+
+    Notes
+    -----
+    Conversion attempts:
+    1. Direct integer conversion after comma removal
+    2. Float-to-integer conversion as fallback
+    3. Returns default value if both methods fail
+    """
     x = deNone(x)
     if x is None:
         return default
@@ -40,6 +88,30 @@ def to_int(x, default=0):
 
 
 def to_bool(x, default=False):
+    """
+    Convert input to boolean value.
+
+    Interprets various string representations as boolean values
+    using common conventions for true/false indicators.
+
+    Parameters
+    ----------
+    x : any
+        Input value to convert to boolean.
+    default : bool, default=False
+        Default value to return if input doesn't match known patterns.
+
+    Returns
+    -------
+    value : bool
+        Boolean interpretation of input or default value.
+
+    Notes
+    -----
+    Recognizes as True: "true", "1", "yes" (case-insensitive)
+    Recognizes as False: "false", "0", "no" (case-insensitive)
+    Returns default for all other inputs.
+    """
     s = str(x).strip().lower()
     if s in {"true", "1", "yes"}:
         return True
@@ -49,6 +121,23 @@ def to_bool(x, default=False):
 
 
 def parse_created_at(x):
+    """
+    Parse Twitter account creation date from various formats.
+
+    Attempts to parse datetime strings using Twitter's standard format
+    and ISO format as fallback, handling timezone information appropriately.
+
+    Parameters
+    ----------
+    x : str or any
+        Date string to parse, typically from Twitter API data.
+
+    Returns
+    -------
+    dt : datetime.datetime or None
+        Parsed datetime object with timezone information,
+        or None if parsing fails.
+    """
     s = deNone(x)
     if not s:
         return None
@@ -62,6 +151,27 @@ def parse_created_at(x):
 
 
 def account_age_days(dt):
+    """
+    Calculate account age in days from creation datetime.
+
+    Computes the difference between account creation time and
+    current time, returning the age in whole days.
+
+    Parameters
+    ----------
+    dt : datetime.datetime or None
+        Account creation datetime with timezone information.
+
+    Returns
+    -------
+    age : float or numpy.nan
+        Account age in days (non-negative), or NaN if datetime is None.
+
+    Notes
+    -----
+    Uses current UTC time as reference point and ensures
+    non-negative results by taking maximum of 0 and calculated difference.
+    """
     if not dt:
         return np.nan
     now = datetime.now(timezone.utc)
@@ -70,6 +180,69 @@ def account_age_days(dt):
 
 
 def extract_features(item):
+    """
+        Extract comprehensive profile features for bot detection analysis.
+
+        Processes a Twitter user profile record to extract and compute
+        various features used in bot detection, including profile completeness
+        indicators, engagement metrics, and derived ratios.
+
+        Parameters
+        ----------
+        item : dict
+            Twitter user profile record containing user data and metadata.
+
+        Returns
+        -------
+        features : dict
+            Dictionary containing extracted features:
+
+            Identity features:
+            - 'user_id': str, user identifier
+            - 'screen_name': str, username
+            - 'label_raw': str, original classification label
+
+            Profile completeness features (binary):
+            - 'has_name': int, whether profile has display name
+            - 'has_screen_name': int, whether profile has username
+            - 'has_description': int, whether profile has bio
+            - 'has_url': int, whether profile has website URL
+            - 'has_entities_urls': int, whether profile has entity URLs
+            - 'has_profile_image': int, whether uses custom profile image
+            - 'has_background_image': int, whether has custom background
+
+            Profile characteristics (binary):
+            - 'default_profile': int, whether uses default profile settings
+            - 'verified': int, whether account is verified
+            - 'geo_enabled': int, whether geolocation is enabled
+            - 'has_lang': int, whether language is specified
+            - 'has_time_zone': int, whether timezone is set
+
+            Numeric features:
+            - 'desc_len': int, description/bio length in characters
+            - 'followers': int, number of followers
+            - 'friends': int, number of accounts followed
+            - 'listed_count': int, number of lists account appears on
+            - 'statuses': int, total number of tweets/posts
+            - 'favourites': int, number of tweets liked
+            - 'account_age_days': float, account age in days
+
+            Derived metrics:
+            - 'followers_to_friends_ratio': float, followers/friends ratio
+            - 'activity_rate': float, tweets per day since creation
+            - 'fav_rate': float, favorites per day since creation
+
+        Notes
+        -----
+        Features are designed based on research findings that bots often have:
+        - Incomplete profiles (missing names, descriptions, custom images)
+        - Unusual follower/following ratios
+        - High activity rates
+        - Default profile settings
+
+        Entity URLs are extracted from profile entities field using regex
+        pattern matching for HTTP/HTTPS URLs.
+        """
     prof = item.get("profile") or {}
 
     # basic string fields
@@ -153,6 +326,29 @@ def extract_features(item):
 
 
 def iter_items(path):
+    """
+    Iterate over items in JSON or JSONL dataset files.
+
+    Provides unified iteration interface for both regular JSON files
+    (containing arrays) and JSON Lines format files, handling
+    encoding and empty lines appropriately.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to dataset file (JSON or JSONL format).
+
+    Yields
+    ------
+    item : dict
+        Individual record from the dataset.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the specified dataset file does not exist.
+
+    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Dataset not found: {path}")

@@ -7,13 +7,29 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from scipy.sparse import hstack
 
+
 def extract_text_features(texts):
     """
-    Extract additional features from text data:
-    - Word count
-    - Word entropy (information density)
-    - Average word length
-    - Punctuation ratio
+    Extract additional statistical features from text data.
+
+    Computes linguistic features including word count, word entropy
+    (information density), average word length, and punctuation ratio
+    for each text sample.
+
+    Parameters
+    ----------
+    texts : array-like of str
+        Collection of text strings to extract features from.
+        Non-string values are converted to strings.
+
+    Returns
+    -------
+    features : numpy.ndarray, shape (n_samples, 4)
+        Array containing extracted features for each text sample:
+        - Column 0: Word count (number of space-separated tokens)
+        - Column 1: Word entropy (information density measure)
+        - Column 2: Average word length (mean characters per word)
+        - Column 3: Punctuation ratio (punctuation chars / total chars)
     """
     import collections
     from scipy.stats import entropy
@@ -56,7 +72,15 @@ def extract_text_features(texts):
 
 
 def get_models_dir():
-    """Get the path to the models directory"""
+    """
+    Get the path to the models directory and create it if necessary.
+
+    Returns
+    -------
+    models_dir : str
+        Absolute path to the models directory located at project_root/models/.
+        Directory is created if it doesn't exist.
+    """
     base_dir = os.path.dirname(os.path.dirname(__file__))
     models_dir = os.path.join(base_dir, 'models')
 
@@ -70,8 +94,25 @@ def get_models_dir():
 
 def load_processed_data():
     """
-    Load the processed data from the cleaned_combined.csv file
-    and extract the features (text) and labels.
+    Load processed data from cleaned_combined.csv file.
+
+    Loads text features and labels from the preprocessed dataset file
+    located at project_root/data/stats/cleaned_combined.csv.
+
+    Returns
+    -------
+    cleaned_text : pandas.Series
+        containing cleaned text data from 'cleaned_text' column.
+    y : pandas.Series
+        containing labels from 'label' column.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the processed data file doesn't exist at expected path.
+    ValueError
+        If required columns ('cleaned_text' or 'label') are missing
+        from the loaded data.
     """
     # Get the path to the processed data file
     base_dir = os.path.dirname(os.path.dirname(__file__))
@@ -108,25 +149,52 @@ def load_processed_data():
 
 def get_split_data():
     """
-    Load the processed data and split it into training and testing sets.
-    Returns:
-        X_train, X_test, y_train, y_test: Split data for training and testing.
+    Load processed data and split into training and testing sets.
+
+    Performs stratified train-test split maintaining class distribution
+    proportions in both training and testing sets.
+
+    Returns
+    -------
+    X_train : pandas.Series
+        Training text data (80% of samples).
+    X_test : pandas.Series
+        Testing text data (20% of samples).
+    y_train : pandas.Series
+        Training labels corresponding to X_train.
+    y_test : pandas.Series
+        Testing labels corresponding to X_test.
     """
     # Load the cleaned text and labels
     cleaned_text, y = load_processed_data()
-    X_train, X_test, y_train, y_test = train_test_split(
-        cleaned_text, y,
-        test_size=0.2,
-        random_state=42,
-        shuffle=True,
-        stratify=y  # This ensures class distribution is preserved
-    )
+    X_train, X_test, y_train, y_test = train_test_split(cleaned_text, y, test_size=0.2, random_state=42, shuffle=True,
+                                                        stratify=y)
     return X_train, X_test, y_train, y_test
 
 
 def tokenize_text(X_train, X_test):
     """
-    Tokenize the text data using TF-IDF vectorization and extract additional features.
+    Vectorize text using TF-IDF and combine with additional text features.
+
+    Creates TF-IDF representation of text data and combines it with
+    statistical text features (word count, entropy, etc.). Uses cached
+    vectorizer and scaler if available.
+
+    Parameters
+    ----------
+    X_train : pandas.Series
+        Training text data to fit vectorizer and extract features.
+    X_test : pandas.Series
+        Testing text data to transform using fitted vectorizer.
+
+    Returns
+    -------
+    X_train_combined : scipy.sparse matrix, shape (n_train_samples, n_features)
+        Combined training features: TF-IDF vectors concatenated with
+        scaled statistical text features.
+    X_test_combined : scipy.sparse matrix, shape (n_test_samples, n_features)
+        Combined testing features: TF-IDF vectors concatenated with
+        scaled statistical text features.
     """
     logging.info("Vectorizing text data using TF-IDF...")
 
@@ -163,7 +231,6 @@ def tokenize_text(X_train, X_test):
     logging.info(f"Additional features shape: {X_train_features.shape}")
 
     # Scale the additional features
-
     scaler = StandardScaler()
     X_train_features_scaled = scaler.fit_transform(X_train_features)
     X_test_features_scaled = scaler.transform(X_test_features)
@@ -183,11 +250,21 @@ def tokenize_text(X_train, X_test):
 
 def save_model(model, name):
     """
-    Save a trained model to disk.
+    Save a trained model to disk using joblib serialization.
 
-    Args:
-        model: The trained model to save
-        name: Name of the model (used for the filename)
+    Parameters
+    ----------
+    model : object
+        The trained machine learning model to save. Must be serializable
+        by joblib (most scikit-learn models are supported).
+    name : str
+        Name of the model used for filename generation. Spaces are replaced
+        with underscores and converted to lowercase.
+
+    Returns
+    -------
+    None
+        Model is saved to models directory as '{name}_model.joblib'.
     """
     model_path = os.path.join(get_models_dir(), f"{name.lower().replace(' ', '_')}_model.joblib")
     joblib.dump(model, model_path)
@@ -198,11 +275,17 @@ def load_model(name):
     """
     Load a saved model from disk.
 
-    Args:
-        name: Name of the model to load
+    Parameters
+    ----------
+    name : str
+        Name of the model to load. Should match the name used when
+        saving the model with save_model().
 
-    Returns:
-        The loaded model or None if not found
+    Returns
+    -------
+    model : object or None
+        The loaded model object if file exists, None otherwise.
+        Returns the same type of object that was originally saved.
     """
     model_path = os.path.join(get_models_dir(), f"{name.lower().replace(' ', '_')}_model.joblib")
 

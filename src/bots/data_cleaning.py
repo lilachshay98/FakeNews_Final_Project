@@ -21,6 +21,11 @@ BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 RAW_DATA_DIR = BASE_DIR / "data" / "raw" / "bots" / "cresci-2017" / "datasets_full.csv"
 PROCESSED_DATA_DIR = BASE_DIR / "data" / "stats" / "bots"
 
+ROOT = Path(__file__).resolve().parents[1]  # goes from src/ up to project root
+DATA = ROOT / "data" / "raw"
+FIGS = ROOT / "figures"
+STATS = ROOT / "data" / "stats"
+
 # Create output directory if it doesn't exist
 os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
 
@@ -42,7 +47,31 @@ GENUINE_DATASETS = [
 
 
 def clean_user_data(df):
-    """Clean and preprocess user data"""
+    """
+    Clean and preprocess Twitter user profile data.
+
+    Performs comprehensive data cleaning and feature engineering on Twitter
+    user profile datasets, including date parsing, type conversion, missing
+    value handling, and derived feature calculation for bot detection analysis.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Raw user data DataFrame containing Twitter profile information
+        with potential inconsistencies, missing values, and mixed data types.
+
+    Returns
+    -------
+    df_cleaned : pandas.DataFrame
+        Cleaned DataFrame with:
+        - Standardized data types (datetime, numeric, categorical)
+        - Removed columns with excessive missing values (>50%)
+        - Engineered features for bot detection:
+          * screen_name_length: Username length
+          * has_description: Binary indicator for profile description
+          * description_length: Profile bio character count
+          * account_age_days: Account age in days from creation
+    """
     logging.info(f"Cleaning user data: {df.shape[0]} records")
 
     # Convert empty strings to NaN
@@ -109,7 +138,31 @@ def clean_user_data(df):
 
 
 def clean_tweet_data(df):
-    """Clean and preprocess tweet data"""
+    """
+    Clean and preprocess Twitter tweet data.
+
+    Performs comprehensive cleaning of tweet datasets including text feature
+    extraction, date parsing, engagement metric conversion, and content
+    analysis features for bot detection and social media analysis.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Raw tweet data DataFrame containing Twitter posts with potential
+        inconsistencies, mixed data types, and missing values.
+
+    Returns
+    -------
+    df_cleaned : pandas.DataFrame
+        Cleaned DataFrame with:
+        - Standardized datetime and numeric columns
+        - Removed columns with excessive missing values (>50%)
+        - Extracted text features:
+          * text_length: Character count of tweet content
+          * hashtag_count: Number of hashtags (#) in tweet
+          * mention_count: Number of user mentions (@) in tweet
+          * url_count: Number of URLs in tweet content
+    """
     logging.info(f"Cleaning tweet data: {df.shape[0]} records")
 
     # Convert empty strings to NaN
@@ -168,7 +221,29 @@ def clean_tweet_data(df):
 
 
 def process_dataset(dataset_name, is_bot):
-    """Process a single dataset folder"""
+    """
+    Process a single dataset folder containing users and tweets.
+
+    Loads, cleans, and processes both user profile and tweet data from a
+    specific dataset folder, handling CSV parsing errors and missing files
+    gracefully while maintaining data integrity and provenance tracking.
+
+    Parameters
+    ----------
+    dataset_name : str
+        Name of the dataset folder to process
+    is_bot : bool
+        Label indicating whether this dataset contains bot accounts (True)
+        or genuine human accounts (False).
+
+    Returns
+    -------
+    result : dict
+        Dictionary containing processed data with keys:
+        - 'users': pandas.DataFrame with cleaned user profile data
+        - 'tweets': pandas.DataFrame with cleaned tweet data
+        Missing datasets (users or tweets) are omitted from result.
+    """
     dataset_path = RAW_DATA_DIR / dataset_name
     label = 1 if is_bot else 0  # 1 for bot, 0 for human
 
@@ -181,8 +256,6 @@ def process_dataset(dataset_name, is_bot):
     if os.path.exists(users_file):
         try:
             # Handle CSV with no headers by providing column names
-            # These column names are based on the Twitter API user object schema
-            # If headers exist, they'll be used instead
             user_columns = [
                 'id_str', 'screen_name', 'name', 'followers_count', 'friends_count',
                 'statuses_count', 'favourites_count', 'listed_count', 'url', 'lang',
@@ -256,8 +329,19 @@ def process_dataset(dataset_name, is_bot):
 
 
 def main():
-    """Main function to process all datasets"""
-    logging.info(f"Starting Cresci-2017 dataset cleaning process")
+    """
+    Main processing function for comprehensive Twitbot-20 dataset cleaning.
+
+    Orchestrates the complete data processing pipeline from raw Twitbot-20
+    datasets to cleaned, feature-engineered datasets ready for machine learning.
+    Processes multiple bot and human account datasets, combines them, and creates
+    comprehensive feature sets for bot detection research.
+
+    Returns
+    -------
+    None
+    """
+    logging.info(f"Starting Twitbot-20 dataset cleaning process")
 
     all_users_dfs = []
     all_tweets_dfs = []

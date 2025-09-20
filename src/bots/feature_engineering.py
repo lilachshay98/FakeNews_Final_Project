@@ -3,12 +3,9 @@
 
 import os
 import pandas as pd
-import numpy as np
 import logging
 from pathlib import Path
 import json
-from datetime import datetime
-import re
 
 # Configure logging
 logging.basicConfig(
@@ -44,7 +41,7 @@ def load_cresci_comprehensive_dataset(file_path=None):
     logging.info(f"Loading Cresci 2017 comprehensive dataset from {file_path}...")
 
     try:
-        # Using chunksize for large files to avoid memory issues
+        # Using chunk size for large files to avoid memory issues
         chunks = []
         for chunk in pd.read_csv(file_path, chunksize=10000):
             chunks.append(chunk)
@@ -412,7 +409,26 @@ def save_features(features_df, output_path=None):
 
 
 def main():
-    """Main function to run the feature engineering pipeline"""
+    """
+    Main orchestration function for Cresci-2017 Twitter bot dataset feature engineering pipeline.
+
+    Executes the complete feature extraction workflow by coordinating data loading,
+    feature computation, and output generation for bot detection analysis. This function
+    serves as the entry point for transforming cleaned Twitter user profiles and tweet
+    data into machine learning-ready feature vectors.
+
+    Returns
+    -------
+    None
+        Function performs side effects (file I/O and logging) but returns no value.
+        Success/failure is indicated through log messages and file creation.
+
+    Raises
+    ------
+    SystemExit
+        Implicitly exits if critical input files cannot be loaded, preventing
+        downstream processing errors.
+    """
     logging.info("Starting feature engineering process for Cresci 2017 dataset")
 
     # Load tweets and users data

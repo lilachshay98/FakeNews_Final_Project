@@ -35,22 +35,22 @@ def load_accounts():
 
 def build_follow_graph(accounts):
     """
-        Build a directed follow graph and keep the largest weakly connected component.
+    Build a directed follow graph and keep the largest weakly connected component.
 
-        Parameters
-        ----------
-        accounts : Iterable[dict]
-            Records with keys like "ID", "label", "profile.screen_name", "neighbor.following".
+    Parameters
+    ----------
+    accounts : Iterable[dict]
+        Records with keys like "ID", "label", "profile.screen_name", "neighbor.following".
 
-        Returns
-        -------
-        Gd : nx.DiGraph
-            Directed graph (nodes: string IDs; edge u->v means u follows v).
-        labels : dict[str, {"0","1",None}]
-            id -> label ("0" bot, "1" human, or None).
-        screen : dict[str, str]
-            id -> normalized screen name (lowercase, no "@").
-        """
+    Returns
+    -------
+    Gd : nx.DiGraph
+        Directed graph (nodes: string IDs; edge u->v means u follows v).
+    labels : dict[str, {"0","1",None}]
+        id -> label ("0" bot, "1" human, or None).
+    screen : dict[str, str]
+        id -> normalized screen name (lowercase, no "@").
+    """
     labels = {}  # "0"=human, "1"=bot, may be None
     screen = {}  # id -> screen_name (account name, normalized)
     following = defaultdict(list)
@@ -98,7 +98,7 @@ def top_mentions(data, top_k=5, exclude_self=True, include_at=False):
     Returns
     -------
     handles : list[str]
-        Lowercased handles (prefixed with "@" if requested).
+        Lowercase handles (prefixed with "@" if requested).
     """
     counts = Counter()
 
@@ -128,30 +128,30 @@ def top_mentions(data, top_k=5, exclude_self=True, include_at=False):
 # 3. create a graph centered around the anchors
 def subgraph_around_anchors(Gd, screen, anchors, radius=2, max_nodes=4000, mutual_only=False):
     """
-        Create an undirected subgraph around anchor accounts within a hop radius.
+    Create an undirected subgraph around anchor accounts within a hop radius.
 
-        Parameters
-        ----------
-        Gd : nx.DiGraph
-            Directed follow graph (node IDs as strings).
-        screen : dict[str, str]
-            id -> screen name (lowercase, no "@").
-        anchors : Iterable[str]
-            Seed handles (with/without "@", case-insensitive).
-        radius : int, default=2
-            Ego-graph radius.
-        max_nodes : int, default=4000
-            Cap on subgraph size; trims by degree if exceeded.
-        mutual_only : bool, default=False
-            Keep only mutual follows before subgraphing.
+    Parameters
+    ----------
+    Gd : nx.DiGraph
+        Directed follow graph (node IDs as strings).
+    screen : dict[str, str]
+        id -> screen name (lowercase, no "@").
+    anchors : Iterable[str]
+        Seed handles (with/without "@", case-insensitive).
+    radius : int, default=2
+        Ego-graph radius.
+    max_nodes : int, default=4000
+        Cap on subgraph size; trims by degree if exceeded.
+    mutual_only : bool, default=False
+        Keep only mutual follows before subgraphing.
 
-        Returns
-        -------
-        H : nx.Graph
-            Undirected subgraph around anchors.
-        anchor_ids : list[str]
-            Anchor node IDs found in the graph.
-        """
+    Returns
+    -------
+    H : nx.Graph
+        Undirected subgraph around anchors.
+    anchor_ids : list[str]
+        Anchor node IDs found in the graph.
+    """
     anchors = [a.strip().lstrip("@").lower() for a in anchors]
     id_for = {sn: uid for uid, sn in screen.items()}
     anchor_ids = [id_for[a] for a in anchors if a in id_for]
@@ -176,33 +176,31 @@ def subgraph_around_anchors(Gd, screen, anchors, radius=2, max_nodes=4000, mutua
     return H, anchor_ids
 
 
-# 4. use Louvain algorithm to calculate the best partition
+# 4. use the Louvain algorithm to calculate the best partition
 def louvain_partition(Gu):
     """
-        Compute Louvain communities for an undirected graph.
+    Compute Louvain communities for an undirected graph.
 
-        Parameters
-        ----------
-        Gu : nx.Graph
-            Graph to partition.
+    Parameters
+    ----------
+    Gu : nx.Graph
+        Graph to partition.
 
-        Returns
-        -------
-        partition : dict[Hashable, int]
-            Node -> community ID.
-        """
+    Returns
+    -------
+    partition : dict[Hashable, int]
+        Node -> community ID.
+    """
     return community_louvain.best_partition(Gu, resolution=1.0, random_state=42)
 
 
 # 5. analyze results
-def analyze_communities(H, labels, partition):
+def analyze_communities(labels, partition):
     """
     Analyze each community's bot/human composition.
 
     Parameters
     ----------
-    H : nx.Graph
-        The subgraph containing communities
     labels : dict[str, {"0","1",None}]
         Node ID to label mapping ("0"=bot, "1"=human)
     partition : dict[str, int]
@@ -240,7 +238,7 @@ def analyze_communities(H, labels, partition):
             confidence = human_pct / 100
         else:
             comm_type = "mixed"
-            predicted_label = None  # Will be 50/50
+            predicted_label = None  # will be 50/50, random choice
             confidence = 0.5
 
         community_stats[community_id] = {'total_nodes': total, 'bots': bots, 'humans': humans, 'unknown': unknown,
@@ -252,48 +250,102 @@ def analyze_communities(H, labels, partition):
 
 def find_connected_community(account_id, Gd, partition, radius):
     """
-    Find if the account is connected to any existing community within radius.
+    Find if an account is connected to any existing community within radius.
+
+    Searches the network to determine if a given account has connections
+    to nodes in existing communities within a specified hop radius.
+
+    Parameters
+    ----------
+    account_id : str
+        The account ID to search connections for.
+    Gd : networkx.DiGraph
+        The full directed graph.
+    partition : dict[str, int]
+        Node ID to community ID mapping.
+    radius : int
+        Search radius in number of hops.
 
     Returns
     -------
-    int or None : Community ID if found, None otherwise
+    community_id : int or None
+        Community ID if connected community found, None otherwise.
+        Returns the community with most connections if multiple found.
     """
     if account_id not in Gd:
         return None
 
     # Get neighbors within radius
-    try:
-        ego_net = nx.ego_graph(Gd.to_undirected(), account_id, radius=radius)
+    ego_net = nx.ego_graph(Gd.to_undirected(), account_id, radius=radius)
 
-        # Count connections to each community
-        community_connections = Counter()
-        for neighbor in ego_net.nodes():
-            if neighbor in partition and neighbor != account_id:
-                community_connections[partition[neighbor]] += 1
+    # Count connections to each community
+    community_connections = Counter()
+    for neighbor in ego_net.nodes():
+        if neighbor in partition and neighbor != account_id:
+            community_connections[partition[neighbor]] += 1
 
-        # Return the most connected community, or None if no connections
-        if community_connections:
-            return community_connections.most_common(1)[0][0]
-    except:
-        pass
-
-    return None
+    # Return the most connected community, or None if no connections
+    if community_connections:
+        return community_connections.most_common(1)[0][0]
 
 
 def add_edges_to_community_graph(account_id, community_id, Gd, H, partition):
-    """Add edges between the new account and its community members."""
+    """
+    Add edges between a new account and its community members.
+
+    Updates the community graph by adding edges between the specified
+    account and other members of the same community, based on existing
+    connections in the original directed graph.
+
+    Parameters
+    ----------
+    account_id : str
+        The account ID to connect to community members.
+    community_id : int
+        The community ID the account belongs to.
+    Gd : networkx.DiGraph
+        The original directed graph with all connections.
+    H : networkx.Graph
+        The community subgraph to update (modified in place).
+    partition : dict[str, int]
+        Node ID to community ID mapping.
+
+    Returns
+    -------
+    None
+        Modifies H in place by adding appropriate edges.
+    """
     # Add edges to accounts in the same community that are connected in the original graph
     community_members = [node for node, comm in partition.items() if comm == community_id and node != account_id]
 
     for member in community_members:
         if member in H.nodes():
-            # Check if there's an edge in the original directed graph (either direction)
+            # Check if there's an edge in the original directed graph (in either direction)
             if Gd.has_edge(account_id, member) or Gd.has_edge(member, account_id):
                 H.add_edge(account_id, member)
 
 
 def create_new_community_stats(node_list, labels):
-    """Create statistics for a new community."""
+    """
+    Create statistics for a new community.
+
+    Computes comprehensive statistics for a community given its member
+    nodes and their labels.
+
+    Parameters
+    ----------
+    node_list : list[str]
+        List of node IDs in the community.
+    labels : dict[str, {"0","1",None}]
+        Node ID to label mapping.
+
+    Returns
+    -------
+    stats : dict
+        Statistics dictionary with same structure as analyze_communities
+        output, containing counts, percentages, type classification,
+        and confidence measures.
+    """
     bots = sum(1 for node in node_list if labels.get(node) == "0")
     humans = sum(1 for node in node_list if labels.get(node) == "1")
     unknown = sum(1 for node in node_list if labels.get(node) not in ("0", "1"))
@@ -323,7 +375,26 @@ def create_new_community_stats(node_list, labels):
 
 
 def update_community_stats(community_id, community_stats, labels):
-    """Update statistics for an existing community after adding/changing a node."""
+    """
+    Update statistics for an existing community after adding/changing a node.
+
+    Recalculates all statistics for a community when its composition
+    has changed due to node additions or label updates.
+
+    Parameters
+    ----------
+    community_id : int
+        The community ID to update statistics for.
+    community_stats : dict[int, dict]
+        Community statistics dictionary (modified in place).
+    labels : dict[str, {"0","1",None}]
+        Current node ID to label mapping.
+
+    Returns
+    -------
+    None
+        Modifies community_stats in place with updated statistics.
+    """
     if community_id not in community_stats:
         return
 
@@ -477,7 +548,22 @@ def predict_account_label(account_name, Gd, H, labels, screen, partition, commun
 
 # 6. print and plot results
 def print_community_summary(community_stats):
-    """Print a summary of all communities."""
+    """
+    Print a summary of all communities.
+
+    Displays comprehensive statistics about detected communities including
+    size, composition, and type distribution.
+
+    Parameters
+    ----------
+    community_stats : dict[int, dict]
+        Community statistics from analyze_communities().
+
+    Returns
+    -------
+    None
+        Prints formatted summary to stdout.
+    """
     print(f"\n{'=' * 60}")
     print(f"COMMUNITY ANALYSIS SUMMARY")
     print(f"{'=' * 60}")
@@ -612,7 +698,7 @@ def plot_community_colored_graph(H, partition, community_stats, out_png=FIGS / "
         elif stats['type'] == 'human-dominant':
             community_colors[comm_id] = '#7ED957'  # Green
         else:  # mixed
-            community_colors[comm_id] = '#FFA500'  # Orange (changed from grey)
+            community_colors[comm_id] = '#FFA500'  # Orange
 
     # Assign colors to nodes based on their community
     node_colors = []
@@ -643,18 +729,14 @@ def plot_community_colored_graph(H, partition, community_stats, out_png=FIGS / "
     nx.draw_networkx_edges(H, pos, edge_color="#7f7f7f", width=0.5, alpha=0.35)
 
     # Draw nodes with community colors
-    nx.draw_networkx_nodes(H, pos,
-                           node_color=node_colors,
-                           node_size=node_sizes,
-                           edgecolors='black',
-                           linewidths=0.5,
+    nx.draw_networkx_nodes(H, pos, node_color=node_colors, node_size=node_sizes, edgecolors='black', linewidths=0.5,
                            alpha=0.9)
 
     # Create legend with orange for mixed communities
     import matplotlib.patches as mpatches
     red_patch = mpatches.Patch(color='#FF5C5C', label='Bot-dominant community')
     green_patch = mpatches.Patch(color='#7ED957', label='Human-dominant community')
-    orange_patch = mpatches.Patch(color='#FFA500', label='Mixed community')  # Changed from grey
+    orange_patch = mpatches.Patch(color='#FFA500', label='Mixed community')
 
     plt.legend(handles=[red_patch, green_patch, orange_patch],
                loc='upper right', frameon=False)
@@ -706,7 +788,17 @@ def get_community_color_mapping(community_stats):
 
 
 def print_community_color_legend():
-    """Print the color coding used for communities."""
+    """
+    Print the color coding used for communities.
+
+    Displays the color legend for community visualizations to help
+    interpret the plots and understand the color scheme.
+
+    Returns
+    -------
+    None
+        Prints formatted color legend to stdout.
+    """
     print("\n" + "=" * 50)
     print("COMMUNITY COLOR LEGEND:")
     print("=" * 50)
@@ -729,7 +821,7 @@ if __name__ == "__main__":
     partition = louvain_partition(H)
 
     # Analyze communities
-    community_stats = analyze_communities(H, labels, partition)
+    community_stats = analyze_communities(labels, partition)
 
     # Visualize
     plot_follow_graph(H, labels, screen, anchor_ids, partition)
@@ -737,11 +829,4 @@ if __name__ == "__main__":
 
     # Print initial analysis
     print_community_summary(community_stats)
-
-
-
-
-    # todo: example use for practical algorithm (eden)
-    prediction = predict_account_label("sunnyhowlader5", Gd, H, labels, screen, partition, community_stats, radius=2)
-    print(prediction)
 

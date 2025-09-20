@@ -188,3 +188,15 @@
 2025-09-13 20:15:02,418 - INFO - All models loaded successfully
 2025-09-13 20:15:02,422 - INFO - Loaded data for 249 domains
 2025-09-13 20:15:02,422 - INFO - All models loaded successfully
+2025-09-20 12:23:30,895 - INFO - Starting content classifier UI application...
+2025-09-20 12:23:31,650 - INFO - Initializing NewsClassifier to load models
+2025-09-20 12:23:31,650 - INFO - Starting classification application...
+2025-09-20 12:23:31,650 - INFO - Loading vectorizer from /Users/lilachshay/fake_news_detection/models/tfidf_vectorizer.joblib
+2025-09-20 12:23:34,583 - INFO - Loading naive_bayes model from /Users/lilachshay/fake_news_detection/models/naive_bayes_model.joblib
+2025-09-20 12:23:34,595 - INFO - Loading logistic_regression model from /Users/lilachshay/fake_news_detection/models/logistic_regression_model.joblib
+2025-09-20 12:23:35,045 - INFO - Loading decision_tree model from /Users/lilachshay/fake_news_detection/models/decision_tree_model.joblib
+2025-09-20 12:23:35,224 - INFO - Loading random_forest model from /Users/lilachshay/fake_news_detection/models/random_forest_model.joblib
+2025-09-20 12:23:35,950 - INFO - Loaded bot detection model from /Users/lilachshay/fake_news_detection/models/bots/random_forest_bot_detector_latest.joblib
+2025-09-20 12:23:35,952 - INFO - All models loaded successfully
+2025-09-20 12:23:35,962 - INFO - Loaded data for 249 domains
+2025-09-20 12:23:35,962 - INFO - All models loaded successfully

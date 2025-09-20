@@ -31,10 +31,41 @@ TRUSTED_PLATFORMS = {
 
 
 class NewsClassifier:
-    """Class to classify news articles and tweets"""
+    """
+    Comprehensive multimodal classifier for fake news detection and bot analysis.
 
+    A unified classification system that combines multiple machine learning models,
+    domain reputation analysis, PageRank scoring, community detection, and temporal
+    patterns to provide robust content authenticity assessment and bot detection
+    capabilities.
+    """
     def __init__(self):
-        """Initialize the classifier by loading all models and vectorizer"""
+        """
+        Initialize the classifier by loading all models and vectorizers.
+
+        Loads and initializes all required components including TF-IDF vectorizer,
+        ensemble of news classification models, bot detection model, and
+        associated preprocessing tools. Displays loading progress with colored
+        terminal output.
+
+        Returns
+        -------
+        None
+            Initializes classifier with all loaded models or exits if loading fails.
+
+        Raises
+        ------
+        SystemExit
+            If any required model files cannot be loaded, exits with error code 1.
+
+        Notes
+        -----
+        Loaded models include:
+        - TF-IDF vectorizer for text feature extraction
+        - Ensemble of news classifiers: Naive Bayes, Logistic Regression,
+          Decision Tree, Random Forest
+        - Random Forest bot detection model
+        """
         print(f"{Fore.CYAN}Starting classification application...{Style.RESET_ALL}")
         logging.info("Starting classification application...")
 
@@ -87,11 +118,37 @@ class NewsClassifier:
 
     def get_url_pagerank_score(self, user_url, graph=None, alpha=0.85):
         """
-        Get PageRank score for a user-provided URL by:
-        1. Extracting its domain
-        2. Checking if it's a trusted platform
-        3. If domain exists in graph, return its score
-        4. If not, scrape its outlinks and calculate a temporary score
+        Calculate PageRank score for a URL's domain with trusted platform handling.
+
+        Computes PageRank-based credibility score by first checking trusted platforms,
+        then existing graph data, and finally scraping outlinks for new domains
+        to calculate temporary scores.
+
+        Parameters
+        ----------
+        user_url : str
+            URL to analyze for PageRank scoring.
+        graph : networkx.DiGraph, optional
+            Existing domain graph for PageRank calculation. If None, loads
+            from domain_edges.csv file.
+        alpha : float, default=0.85
+            Damping parameter for PageRank algorithm.
+
+        Returns
+        -------
+        score : float
+            PageRank score between 0.0 and 1.0, where higher values indicate
+            more credible/authoritative domains.
+        message : str
+            Descriptive message explaining the score source and calculation.
+
+        Notes
+        -----
+        Scoring hierarchy:
+        1. Trusted platforms: Predefined high scores for major news outlets
+        2. Existing graph: PageRank from historical domain relationship data
+        3. Dynamic scraping: Temporary score from newly scraped outlinks
+        4. Fallback: 0.5 neutral score for unreachable/invalid domains
         """
         # Extract domain from URL
         domain = extract_domain(user_url)
@@ -165,7 +222,43 @@ class NewsClassifier:
             return 0.5, f"Error calculating PageRank: {str(e)}"
 
     def predict(self, text, domain, date, url=None):
-        """Make predictions using all models and calculate a cumulative score from multiple factors"""
+        """
+        Make multimodal fake news predictions using ensemble methods and contextual factors.
+
+        Performs comprehensive fake news detection by combining predictions from
+        multiple machine learning models with domain reputation analysis, PageRank
+        scoring, and temporal pattern recognition for robust classification.
+
+        Parameters
+        ----------
+        text : str
+            News article text content to analyze.
+        domain : str
+            Source domain name for reputation analysis.
+        date : str
+            Publication date in YYYY-MM format for temporal analysis.
+        url : str, optional
+            Full article URL for PageRank analysis and domain extraction.
+
+        Returns
+        -------
+        result : dict
+            Comprehensive prediction result containing:
+            - 'prediction': int, binary prediction (0=fake, 1=real)
+            - 'label': str, human-readable prediction ('REAL' or 'FAKE')
+            - 'confidence': float, confidence percentage (0-100)
+            - 'real_probability': float, probability of being real (0-100)
+            - 'fake_probability': float, probability of being fake (0-100)
+            - 'model_votes': dict, individual model predictions
+            - 'score_contributions': dict, contribution from each scoring component
+            - 'component_weights': dict, weighting scheme used for final prediction
+            Returns None if prediction fails.
+
+        Notes
+        -----
+        The ensemble includes Naive Bayes, Logistic Regression, Decision Tree,
+        and Random Forest models for robust text-based classification.
+        """
         domain_stats = self.get_domain_stats()
         date_stats = self.get_date_stats()
         year, month = self.get_year_and_month_from_date_input(date)
@@ -297,6 +390,36 @@ class NewsClassifier:
             return None
 
     def get_community_prediction_score(self, account_name):
+        """
+        Get bot/human prediction score based on community detection analysis.
+
+        Uses community detection algorithms on Twitter follow networks to
+        predict account authenticity based on community membership patterns
+        and relationship structures.
+
+        Parameters
+        ----------
+        account_name : str
+            Twitter account username (with or without @ prefix).
+
+        Returns
+        -------
+        prediction_score : dict or float
+            Community-based prediction result containing human/bot probabilities
+            and community assignment information. Returns 1.0 if account name
+            is not provided.
+
+        Notes
+        -----
+        Community analysis workflow:
+        1. Load Twitter account relationship data
+        2. Build directed follow graph
+        3. Find anchor accounts from mentions
+        4. Create ego-graph around anchors
+        5. Apply Louvain community detection
+        6. Analyze community composition (bot vs human ratio)
+        7. Predict account type based on community membership
+        """
         if not account_name:
             return 1.0  # Neutral score if no account name provided
         # Load and build graph
@@ -311,25 +434,41 @@ class NewsClassifier:
         partition = louvain_partition(H)
 
         # Analyze communities
-        community_stats = analyze_communities(H, labels, partition)
+        community_stats = analyze_communities(labels, partition)
 
         return predict_account_label(account_name, Gd, H, labels, screen, partition, community_stats, radius=2)
 
     def predict_bot(self, tweet_text, user_data):
         """
-        Analyze if a tweet is from a bot based on user data
+        Analyze if a tweet is from a bot using multimodal detection methods.
 
-        Parameters:
-        -----------
+        Performs comprehensive bot detection by combining machine learning model
+        predictions with profile completeness analysis, community detection, and
+        behavioral pattern recognition for robust account classification.
+
+        Parameters
+        ----------
         tweet_text : str
-            The text content of the tweet
+            The text content of the tweet to analyze.
         user_data : dict
-            Dictionary containing Twitter user metrics
+            Dictionary containing Twitter user metrics including:
+            - Basic counts: followers_count, friends_count, statuses_count
+            - Profile info: screen_name, verified, created_at
+            - Engagement: favourites_count, listed_count
+            - Behavioral features for model input
 
-        Returns:
-        --------
-        dict
-            Result dictionary with bot prediction and confidence
+        Returns
+        -------
+        result : dict
+            Comprehensive bot detection result containing:
+            - 'prediction': int, binary prediction (0=human, 1=bot)
+            - 'label': str, human-readable result ('HUMAN', 'BOT', or 'ERROR')
+            - 'confidence': float, prediction confidence percentage
+            - 'bot_probability': float, probability of being a bot
+            - 'human_probability': float, probability of being human
+            - 'human_indicators': dict, AUC-weighted profile indicators
+            - 'community_score': dict, community-based prediction
+            Returns None if analysis fails completely.
         """
         try:
             # Import warnings to suppress the sklearn feature names warning
@@ -560,15 +699,26 @@ class NewsClassifier:
 
     @staticmethod
     def get_domain_stats():
-        """Load domain statistics from domains.txt"""
+        """
+        Load domain reputation statistics from CSV file.
+
+        Reads domain-level statistics including fake news ratios for
+        credibility assessment in news classification.
+
+        Returns
+        -------
+        domain_stats : dict[str, float]
+            Mapping from domain names to fake news ratios (0.0-1.0).
+            Empty dict if file not found.
+        """
         domain_stats = {}
         domains_path = os.path.join(STATS_DIR, 'domains_summary.csv')
         if os.path.exists(domains_path):
-            with open(domains_path, 'r') as f:
+            with open(domains_path, 'r', encoding='utf-8-sig') as f:
                 for line in f:
                     parts = line.strip().split(',')
                     domain = parts[0].strip().lower()
-                    if domain == '﻿domain':
+                    if domain == 'domain':
                         continue  # Skip header
                     fake_ratio = float(parts[4].strip())
                     domain_stats[domain] = fake_ratio
@@ -578,6 +728,18 @@ class NewsClassifier:
 
     @staticmethod
     def get_date_stats():
+        """
+        Load temporal fake news statistics by year and month.
+
+        Reads monthly bot activity statistics for temporal pattern
+        analysis in news authenticity assessment.
+
+        Returns
+        -------
+        date_stats : dict[str, dict[str, float]]
+            Nested mapping from year -> month -> fake news ratio.
+            Empty dict if file not found.
+        """
         dates_stats = {}
         dates_path = os.path.join(STATS_DIR, 'monthly_bot_data.csv')
         if os.path.exists(dates_path):
@@ -595,7 +757,31 @@ class NewsClassifier:
         return dates_stats
 
     def clean_text(self, text):
-        """Clean input text with the same preprocessing as training data"""
+        """
+        Clean input text with preprocessing matching training data.
+
+        Applies consistent text preprocessing including lowercasing,
+        punctuation removal, and whitespace normalization to match
+        the preprocessing used during model training.
+
+        Parameters
+        ----------
+        text : str or other
+            Input text to preprocess. Non-string inputs are converted to string.
+
+        Returns
+        -------
+        cleaned_text : str
+            Preprocessed text ready for vectorization and model input.
+
+        Notes
+        -----
+        Preprocessing steps:
+        1. Convert to string if necessary
+        2. Lowercase conversion
+        3. Punctuation removal using string.punctuation
+        4. Whitespace normalization (collapse multiple spaces)
+        """
         logging.info("Cleaning input text...")
 
         # Convert to string if not already
@@ -614,6 +800,24 @@ class NewsClassifier:
         return text
 
     def get_year_and_month_from_date_input(self, date):
+        """
+        Parse year and month from date input string.
+
+        Extracts year and month components from date strings in
+        YYYY-MM format for temporal analysis.
+
+        Parameters
+        ----------
+        date : str
+            Date string in YYYY-MM format.
+
+        Returns
+        -------
+        year : str or None
+            Extracted year component or None if parsing fails.
+        month : str or None
+            Extracted month component (leading zero removed) or None if parsing fails.
+        """
         # Validate and parse date input
         if date and '-' in date:
             parts = date.split('-')

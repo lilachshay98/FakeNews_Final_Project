@@ -649,7 +649,26 @@ def enhance_feature_importance(X_train, X_test, y_train, y_test, feature_names):
 
 
 def main():
-    """Main function to run the model training pipeline"""
+    """
+    Execute comprehensive bot detection model training pipeline with enhanced feature importance analysis.
+
+    Orchestrates the complete machine learning workflow from feature loading through model
+    training, evaluation, and persistence. Implements advanced feature engineering techniques
+    including polynomial interactions, feature selection, and importance visualization to
+    optimize bot detection performance.
+
+    Returns
+    -------
+    None
+        Function performs side effects (model training, file I/O, logging) but returns no value.
+        Success indicated through log messages and creation of model artifacts.
+
+    Raises
+    ------
+    SystemExit
+        Implicitly exits if critical input files cannot be loaded or data preparation fails,
+        preventing downstream processing errors and incomplete model training.
+    """
     logging.info("Starting bot detection model training with enhanced feature importance")
 
     # Load pre-processed feature data

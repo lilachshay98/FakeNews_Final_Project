@@ -4,17 +4,31 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 import warnings
 
 warnings.filterwarnings('ignore')
 
 
 class BotDetectionSystem:
+    """
+    Machine learning system for detecting automated social media accounts.
+
+    Combines feature engineering, model training, and evaluation to identify bot accounts
+    based on behavioral patterns and profile characteristics. Uses Random Forest classifier
+    with balanced class weights for optimal performance on imbalanced datasets.
+
+    Attributes:
+        model: RandomForestClassifier with balanced class weights
+        scaler: StandardScaler for feature normalization
+        label_encoder: LabelEncoder for categorical data handling
+        feature_names: List of extracted feature column names
+    """
     def __init__(self):
+        """Initialize bot detection system with default ML components."""
         self.model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
         self.scaler = StandardScaler()
         self.label_encoder = LabelEncoder()
@@ -22,7 +36,20 @@ class BotDetectionSystem:
 
     def merge_csv_files(self, file_paths):
         """
-        Merge multiple CSV files into a single dataframe
+        Combine multiple CSV datasets into unified DataFrame.
+
+        Loads and concatenates CSV files with error handling for missing or corrupted
+        files. Provides detailed logging of loading success and dataset dimensions.
+
+        Parameters
+        ----------
+        file_paths : list of str
+            Paths to CSV files for merging
+
+        Returns
+        -------
+        pd.DataFrame or None
+            Combined dataset with all rows concatenated. Returns None if no files loaded successfully.
         """
         dataframes = []
         for file_path in file_paths:
@@ -43,7 +70,22 @@ class BotDetectionSystem:
 
     def clean_data(self, df, missing_threshold=0.5):
         """
-        Clean the dataset by removing columns with too many missing values
+        Remove columns with excessive missing values to improve data quality.
+
+        Analyzes missing value patterns and drops columns exceeding the specified
+        threshold to maintain dataset integrity while preserving informative features.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Input dataset to clean
+        missing_threshold : float, default=0.5
+            Proportion threshold for dropping columns (0.5 = 50% missing values)
+
+        Returns
+        -------
+        pd.DataFrame
+            Cleaned dataset with high-quality columns retained
         """
         print("Data cleaning started...")
         print(f"Initial dataset shape: {df.shape}")
@@ -63,7 +105,24 @@ class BotDetectionSystem:
 
     def preprocess_text(self, df, tweet_columns=None, profile_columns=None):
         """
-        Combine user tweets with profile information and handle missing tweets
+        Combine tweet content with profile information for comprehensive text analysis.
+
+        Merges multiple text sources into unified fields, handles missing content with
+        'Nil' markers, and prepares text data for feature extraction.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Input dataset with text columns
+        tweet_columns : list of str, optional
+            Column names containing tweet text (auto-detected if None)
+        profile_columns : list of str, optional
+            Column names containing profile text (auto-detected if None)
+
+        Returns
+        -------
+        pd.DataFrame
+            Dataset with added 'combined_text' column and text preprocessing applied
         """
         print("Text preprocessing started...")
 
@@ -97,7 +156,25 @@ class BotDetectionSystem:
 
     def extract_features(self, df):
         """
-        Extract useful features from the twitter dataset
+        Engineer behavioral and profile features for bot detection.
+
+        Creates comprehensive feature set including social metrics, content analysis,
+        temporal patterns, and engagement characteristics optimized for identifying
+        automated account behavior.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Preprocessed dataset with user profiles and text content
+
+        Returns
+        -------
+        pd.DataFrame
+            Feature matrix with 15+ engineered features:
+            - Social metrics: followers, following, statuses counts and ratios
+            - Content features: hashtag, mention, URL counts and text statistics
+            - Account features: age, verification, profile completeness
+            - Engagement features: likes, retweets, content uniqueness
         """
         print("Feature engineering started...")
 
@@ -195,7 +272,24 @@ class BotDetectionSystem:
 
     def train_model(self, X, y):
         """
-        Train the Random Forest model
+        Train Random Forest classifier and evaluate performance on bot detection task.
+
+        Performs train-test split, feature scaling, model training, and comprehensive
+        evaluation with multiple metrics optimized for binary classification.
+
+        Parameters
+        ----------
+        X : pd.DataFrame
+            Feature matrix with engineered behavioral features
+        y : array-like
+            Binary labels (0: human, 1: bot)
+
+        Returns
+        -------
+        dict
+            Training results containing:
+            - X_test, y_test, y_pred: Test data and predictions for analysis
+            - metrics: Dictionary with accuracy, precision, recall, f1 scores
         """
         print("Model training started...")
 
@@ -217,7 +311,7 @@ class BotDetectionSystem:
 
         # Calculate metrics
         accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred, pos_label=1)  # Assuming 1 is bot
+        precision = precision_score(y_test, y_pred, pos_label=1)
         recall = recall_score(y_test, y_pred, pos_label=1)
         f1 = f1_score(y_test, y_pred, pos_label=1)
 
@@ -241,7 +335,22 @@ class BotDetectionSystem:
 
     def plot_confusion_matrix(self, y_test, y_pred):
         """
-        Plot confusion matrix
+        Visualize classification performance with annotated confusion matrix.
+
+        Creates heatmap showing true positives, false positives, true negatives,
+        and false negatives with detailed interpretation for bot detection context.
+
+        Parameters
+        ----------
+        y_test : array-like
+            True labels from test set
+        y_pred : array-like
+            Predicted labels from model
+
+        Returns
+        -------
+        np.ndarray
+            Confusion matrix values [[TN, FP], [FN, TP]]
         """
         cm = confusion_matrix(y_test, y_pred)
 
@@ -269,9 +378,23 @@ class BotDetectionSystem:
 
     def plot_feature_importance(self, top_n=15):
         """
-        Plot feature importance
+        Display most influential features for bot classification decisions.
+
+        Ranks and visualizes feature importance scores from Random Forest model
+        to identify key behavioral patterns distinguishing bots from humans.
+
+        Parameters
+        ----------
+        top_n : int, default=15
+            Number of top features to display in ranking
+
+        Returns
+        -------
+        pd.DataFrame or None
+            Feature importance rankings with columns ['feature', 'importance'].
+            Returns None if model lacks feature importance attribute.
         """
-        if hasattr(self.model, 'feature_importances_'):
+        if hasattr(self.model, 'feature_importance_'):
             importance_df = pd.DataFrame({
                 'feature': self.feature_names,
                 'importance': self.model.feature_importances_
@@ -279,7 +402,7 @@ class BotDetectionSystem:
 
             plt.figure(figsize=(10, 8))
             sns.barplot(data=importance_df.head(top_n), x='importance', y='feature')
-            plt.title(f'Top {top_n} Feature Importances')
+            plt.title(f'Top {top_n} Feature Importance')
             plt.xlabel('Importance')
             plt.tight_layout()
             plt.show()
@@ -291,7 +414,20 @@ class BotDetectionSystem:
 
     def analyze_class_distribution(self, y):
         """
-        Analyze the distribution of genuine vs automated accounts
+        Visualize dataset balance between human and bot account labels.
+
+        Creates pie chart and prints statistics showing class distribution to
+        assess dataset balance and potential bias in bot detection training.
+
+        Parameters
+        ----------
+        y : array-like
+            Binary labels (0: human, 1: bot)
+
+        Returns
+        -------
+        pd.Series
+            Class counts with labels as index and counts as values
         """
         class_counts = pd.Series(y).value_counts()
 
@@ -312,7 +448,24 @@ class BotDetectionSystem:
 # Example usage and demonstration
 def run_bot_detection_demo():
     """
-    Demonstrate the bot detection system with synthetic data
+    Demonstrate comprehensive bot detection system capabilities with synthetic data.
+
+    Executes complete machine learning pipeline including data generation, preprocessing,
+    feature engineering, model training, and evaluation. Creates realistic synthetic
+    dataset with bot-like behavioral patterns for system validation.
+
+    Returns
+    -------
+    tuple
+        (detector, results, feature_importance) containing:
+        - detector: Trained BotDetectionSystem instance
+        - results: Model evaluation results and predictions
+        - feature_importance: Feature ranking DataFrame for analysis
+
+    Notes
+    -----
+    Synthetic data includes realistic bot patterns such as extreme follower ratios
+    and automated posting behaviors to simulate real-world detection scenarios.
     """
     print("=== Social Media Bot Detection System Demo ===\n")
 

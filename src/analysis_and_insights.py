@@ -87,7 +87,7 @@ def identify_trends(out_csv=FIGS/"bots_human_accounts_created.csv",
     # create the count for each label (0=Bot, 1=Human)
     month_counts = defaultdict(lambda: {"bots": 0, "humans": 0})
 
-    # Loop over accounts
+    # loop over accounts
     for account in data:
         created_at = account["profile"].get("created_at", None)
         label = account.get("label", None)  # "0"=bot, "1"=human
@@ -104,18 +104,18 @@ def identify_trends(out_csv=FIGS/"bots_human_accounts_created.csv",
             elif label == "1":  # human
                 month_counts[month]["humans"] += 1
 
-    # Convert to DataFrame
+    # convert to DataFrame
     df = pd.DataFrame([
         {"month": m, "bots": c["bots"], "humans": c["humans"]}
         for m, c in month_counts.items()
     ])
 
-    # Sort by month
+    # sort by month
     df["month"] = pd.to_datetime(df["month"])
     df = df.sort_values("month")
     df.to_csv(out_csv)
 
-    # Plot
+    # plot
     plt.figure(figsize=(12, 6))
     plt.plot(df["month"], df["bots"], label="Bots", color="red", marker="o")
     plt.plot(df["month"], df["humans"], label="Humans", color="blue", marker="o")

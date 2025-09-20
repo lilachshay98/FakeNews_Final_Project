@@ -13,7 +13,31 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def fit_models(X_train_tfidf, X_test_tfidf, y_train, y_test):
     """
-    Fit multiple classification models and return them.
+    Train and evaluate multiple classification models for fake news detection.
+
+    Implements an ensemble approach by training multiple diverse classification
+    algorithms on the same dataset, handling different model requirements for
+    non-negative features, and evaluating individual model performance.
+
+    Parameters
+    ----------
+    X_train_tfidf : scipy.sparse matrix, shape (n_train_samples, n_features)
+        Training feature matrix combining TF-IDF vectors and additional
+        text features from tokenize_text().
+    X_test_tfidf : scipy.sparse matrix, shape (n_test_samples, n_features)
+        Testing feature matrix with same feature structure as training data.
+    y_train : array-like, shape (n_train_samples,)
+        Training labels (0=fake, 1=real).
+    y_test : array-like, shape (n_test_samples,)
+        Testing labels for model evaluation.
+
+    Returns
+    -------
+    fitted_models : dict[str, sklearn.base.BaseEstimator]
+        Dictionary mapping model names to fitted scikit-learn model instances:
+        - 'Naive Bayes': MultinomialNB with Laplace smoothing
+        - 'Logistic Regression': Balanced class weights, high iteration limit
+        - 'Gradient Boosting': Ensemble with 200 trees and controlled learning rate
     """
     X_train_tfidf = X_train_tfidf.tocsr()
     X_test_tfidf = X_test_tfidf.tocsr()

@@ -39,7 +39,6 @@ def process_general_dataset(df):
 def build_domain_summary(min_total=20, min_each=5):
     # load
     train = pd.read_csv(DATA/"all_train.tsv", sep="\t")
-    validate = pd.read_csv(DATA/"all_validate.tsv", sep="\t")
     test_public = pd.read_csv(DATA/"all_test_public.tsv", sep="\t")
     politifact_real = pd.read_csv(DATA/"politifact_real.csv")
     politifact_fake = pd.read_csv(DATA/"politifact_fake.csv")
@@ -56,7 +55,6 @@ def build_domain_summary(min_total=20, min_each=5):
 
     general = pd.concat([
         process_general_dataset(train),
-        process_general_dataset(validate),
         process_general_dataset(test_public),
     ], ignore_index=True)
 

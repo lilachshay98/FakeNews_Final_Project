@@ -7,10 +7,13 @@ import tkinter as tk
 from tkinter import scrolledtext, ttk, messagebox
 import string
 import platform
+
+import networkx as nx
 import pandas as pd
 import matplotlib
 
 from shared_logic import NewsClassifier
+from src.page_rank import extract_domain, build_graph_from_edges, scrape_outlinks_one
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -18,20 +21,18 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import warnings
 
-# Setup logging - redirect to file to keep console clean
+# Setup logging
 LOG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'classifier_app_ui.log')
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE),  # Log to file
-        logging.StreamHandler()  # Also log to console for debugging
-    ]
-)
+    format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()])
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets')
+
+MODELS_DIR = os.path.join(BASE_DIR, 'models')
+STATS_DIR = os.path.join(BASE_DIR, 'data/stats')
 
 # Create assets directory if it doesn't exist
 os.makedirs(ASSETS_DIR, exist_ok=True)
@@ -50,18 +51,40 @@ COLORS = {
     'bot': '#d90429'
 }
 
-# Specific macOS configuration
+# Setup macOS configuration (since some of us worked on macs)
 if platform.system() == 'Darwin':
-    os.environ['PYTHONHASHSEED'] = '0'  # For reproducibility on macOS
-    # Ensure matplotlib doesn't use the native GUI backend
+    os.environ['PYTHONHASHSEED'] = '0'
     matplotlib.use('Agg')
 
 
 class ContentClassifierUI:
-    """GUI application for content classification (fake news and bot detection)"""
+    """
+    GUI application for content classification (fake news and bot detection).
+
+    A comprehensive Tkinter-based application that provides an intuitive
+    interface for analyzing news articles and tweets using machine learning
+    models. Supports fake news detection and bot detection capabilities
+    with visual result presentation.
+    """
 
     def __init__(self, root):
-        """Initialize the UI and load models"""
+        """
+        Initialize the UI and load machine learning models.
+
+        Sets up the main application window, initializes UI components,
+        and loads the necessary machine learning models for content
+        classification and bot detection.
+
+        Parameters
+        ----------
+        root : tkinter.Tk
+            The root Tkinter window object.
+
+        Returns
+        -------
+        None
+            Initializes the application and displays loading screen.
+        """
         self.root = root
         self.root.title("🔍 Content Analysis System")
         self.root.geometry("900x700")
@@ -71,12 +94,7 @@ class ContentClassifierUI:
         # Set minimum window size
         self.root.minsize(800, 600)
 
-        # Set application icon (if available)
-        try:
-            self.root.iconbitmap(os.path.join(ASSETS_DIR, "icon.ico"))
-        except:
-            # Icon not found or not supported on this platform
-            pass
+        self.root.iconbitmap(os.path.join(ASSETS_DIR, "icon.ico"))
 
         logging.info("Starting content classifier UI application...")
 
@@ -98,7 +116,18 @@ class ContentClassifierUI:
         self.root.after(100, self.load_models)
 
     def init_ui(self):
-        """Set up the user interface elements"""
+        """
+        Set up the user interface elements.
+
+        Creates the main UI framework including header, status bar,
+        loading screen, and initializes all content frames for
+        news analysis and tweet analysis.
+
+        Returns
+        -------
+        None
+            Initializes all UI components and displays loading screen.
+        """
         # Main frame with padding
         self.main_frame = tk.Frame(self.root, bg=COLORS['background'], padx=20, pady=20)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -109,7 +138,7 @@ class ContentClassifierUI:
 
         self.header_label = tk.Label(
             header_frame,
-            text="Content Analysis System 🕵��",
+            text="Content Analysis System 🕵",
             font=("Arial", 24, "bold"),
             fg=COLORS['header'],
             bg=COLORS['background']
@@ -149,21 +178,32 @@ class ContentClassifierUI:
         self.progress.pack()
         self.progress.start()
 
-        # Create content selection frame (will be shown after loading)
+        # Create content selection frame
         self.create_content_selection_frame()
 
-        # Create news and tweet frames (initially hidden)
+        # Create news and tweet frames
         self.create_news_frame()
         self.create_tweet_frame()
 
-        # Results frame (hidden initially)
+        # Results frame
         self.results_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
 
         # Separator for results
         self.separator = ttk.Separator(self.main_frame, orient='horizontal')
 
     def create_content_selection_frame(self):
-        """Create the frame for selecting content type (news article or tweet)"""
+        """
+        Create the frame for selecting content type (news article or tweet).
+
+        Builds the main menu interface that allows users to choose between
+        news article analysis and tweet bot detection, including descriptive
+        text and navigation buttons.
+
+        Returns
+        -------
+        None
+            Creates and configures the content selection interface.
+        """
         self.content_selection_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
 
         # Selection label
@@ -219,9 +259,11 @@ class ContentClassifierUI:
         description_text = """
         This application provides two types of content analysis:
 
-        1. News Article Analysis: Determines if a news article is likely real or fake based on its content and source domain.
+        1. News Article Analysis: Determines if a news article is likely real or fake based on its content and source 
+        domain. 
 
-        2. Tweet Bot Detection: Analyzes if a tweet likely comes from a bot or human account based on the content and account metrics.
+        2. Tweet Bot Detection: Analyzes if a tweet likely comes from a bot or human account based on the content and 
+        account metrics. 
 
         Select the appropriate option for your content.
         """
@@ -238,7 +280,18 @@ class ContentClassifierUI:
         description_label.pack()
 
     def create_news_frame(self):
-        """Create the frame for news article analysis"""
+        """
+        Create the frame for news article analysis.
+
+        Builds the news analysis interface including text input area,
+        domain and URL input fields, example loading functionality,
+        and control buttons for analysis and clearing.
+
+        Returns
+        -------
+        None
+            Creates and configures the news analysis interface.
+        """
         self.news_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
 
         # Back button
@@ -382,7 +435,25 @@ class ContentClassifierUI:
         self.clear_news_button.pack(side=tk.LEFT, padx=(10, 0))
 
     def create_tweet_frame(self):
-        """Create the frame for tweet bot detection"""
+        """
+        Create the frame for tweet bot detection.
+
+        Builds the tweet analysis interface including tweet text input,
+        comprehensive account metrics collection form, example loading
+        functionality, and control buttons for analysis and clearing.
+
+        Returns
+        -------
+        None
+            Creates and configures the tweet bot detection interface.
+
+        Notes
+        -----
+        Creates input fields for the following user metrics:
+        - followers_count, friends_count, statuses_count
+        - favourites_count, listed_count, screen_name
+        - account_date, verified status
+        """
         self.tweet_frame = tk.Frame(self.main_frame, bg=COLORS['background'])
 
         # Back button
@@ -550,7 +621,30 @@ class ContentClassifierUI:
         self.clear_tweet_button.pack(side=tk.LEFT, padx=(10, 0))
 
     def create_metric_input(self, parent, label_text, var_name, default_value, is_text=False):
-        """Create a labeled input field for a metric"""
+        """
+        Create a labeled input field for a metric.
+
+        Creates a formatted input field with label for collecting user
+        account metrics used in bot detection analysis.
+
+        Parameters
+        ----------
+        parent : tkinter.Widget
+            Parent widget to contain the input field.
+        label_text : str
+            Display text for the input field label.
+        var_name : str
+            Variable name identifier for storing the input widget.
+        default_value : str
+            Default value to populate in the input field.
+        is_text : bool, default=False
+            Whether the field accepts text input
+
+        Returns
+        -------
+        None
+            Creates and stores the input field widget in self.metric_entries.
+        """
         frame = tk.Frame(parent, bg=COLORS['background'])
         frame.pack(fill=tk.X, pady=5)
 
@@ -579,7 +673,25 @@ class ContentClassifierUI:
         self.metric_entries[var_name] = entry
 
     def load_models(self):
-        """Load machine learning models and domain data using NewsClassifier"""
+        """
+        Load machine learning models and domain data using NewsClassifier.
+
+        Initializes the NewsClassifier instance which loads all necessary
+        models for content classification and bot detection. Updates UI
+        state based on loading success or failure.
+
+        Returns
+        -------
+        None
+            Sets self.models_loaded flag and updates UI to show content
+            selection or error message.
+
+        Raises
+        ------
+        Exception
+            If model loading fails, sets self.loading_error and shows
+            error dialog.
+        """
         try:
             logging.info("Initializing NewsClassifier to load models")
             # Create an instance of NewsClassifier which will load all models
@@ -615,7 +727,18 @@ class ContentClassifierUI:
             self.root.after(0, self.show_loading_error)
 
     def show_content_selection(self):
-        """Show the content type selection screen"""
+        """
+        Show the content type selection screen.
+
+        Displays the main menu where users choose between news article
+        analysis and tweet bot detection. Hides all other frames and
+        updates the interface state.
+
+        Returns
+        -------
+        None
+            Updates UI to show content selection interface.
+        """
         # Hide all frames
         self.hide_all_frames()
 
@@ -633,10 +756,36 @@ class ContentClassifierUI:
 
     def get_url_pagerank_score(self, user_url, graph=None, alpha=0.85):
         """
-        Get PageRank score for a user-provided URL by:
-        1. Extracting its domain
-        2. If domain exists in graph, return its score
-        3. If not, scrape its outlinks and calculate a temporary score
+        Get PageRank score for a user-provided URL.
+
+        Calculates PageRank score by extracting domain from URL and either
+        using existing graph data or scraping outlinks to compute a
+        temporary score.
+
+        Parameters
+        ----------
+        user_url : str
+            The URL to analyze for PageRank scoring.
+        graph : networkx.Graph, optional
+            Existing graph to use for PageRank calculation. If None,
+            loads from domain_edges.csv.
+        alpha : float, default=0.85
+            Damping parameter for PageRank algorithm.
+
+        Returns
+        -------
+        score : float or None
+            PageRank score for the domain, None if calculation fails.
+        message : str
+            Descriptive message about the scoring process and result.
+
+        Notes
+        -----
+        Process:
+        1. Extract domain from URL
+        2. Check if domain exists in existing graph
+        3. If not, scrape outlinks and calculate temporary score
+        4. Return score with ranking information
         """
         # Extract domain from URL
         domain = extract_domain(user_url)
@@ -648,7 +797,7 @@ class ContentClassifierUI:
             try:
                 # Try to load existing edges
                 edges = []
-                with open(STATS / "domain_edges.csv", "r", encoding="utf-8") as f:
+                with open(STATS_DIR / "domain_edges.csv", "r", encoding="utf-8") as f:
                     reader = csv.reader(f)
                     next(reader)  # Skip header
                     for src, dst, label in reader:
@@ -690,7 +839,17 @@ class ContentClassifierUI:
             return None, f"Error calculating PageRank: {str(e)}"
 
     def show_news_frame(self):
-        """Show the news article analysis frame"""
+        """
+        Show the news article analysis frame.
+
+        Switches the interface to news article analysis mode, hiding
+        other frames and updating the header and status.
+
+        Returns
+        -------
+        None
+            Updates UI to show news analysis interface.
+        """
         self.hide_all_frames()
         self.header_label.config(text="News Article Analysis 📰")
         self.news_frame.pack(fill=tk.BOTH, expand=True)
@@ -698,7 +857,17 @@ class ContentClassifierUI:
         self.status_bar.config(text="Enter a news article to analyze")
 
     def show_tweet_frame(self):
-        """Show the tweet bot detection frame"""
+        """
+        Show the tweet bot detection frame.
+
+        Switches the interface to tweet bot detection mode, hiding
+        other frames and updating the header and status.
+
+        Returns
+        -------
+        None
+            Updates UI to show tweet analysis interface.
+        """
         self.hide_all_frames()
         self.header_label.config(text="Tweet Bot Detection 🤖")
         self.tweet_frame.pack(fill=tk.BOTH, expand=True)
@@ -706,7 +875,18 @@ class ContentClassifierUI:
         self.status_bar.config(text="Enter tweet text and account metrics")
 
     def hide_all_frames(self):
-        """Hide all content frames"""
+        """
+        Hide all content frames.
+
+        Removes all visible frames from the display to prepare for
+        showing a different interface section.
+
+        Returns
+        -------
+        None
+            Hides all UI frames including loading, content selection,
+            news, tweet, and results frames.
+        """
         # Hide the loading frame if it's showing
         if hasattr(self, 'loading_frame'):
             self.loading_frame.pack_forget()
@@ -731,14 +911,40 @@ class ContentClassifierUI:
             self.separator.pack_forget()
 
     def show_loading_error(self):
-        """Show error message if models failed to load"""
+        """
+        Show error message if models failed to load.
+
+        Displays an error dialog when model loading fails and closes
+        the application since it cannot function without models.
+
+        Returns
+        -------
+        None
+            Shows error dialog and destroys the application window.
+        """
         self.hide_all_frames()
         messagebox.showerror("Loading Error",
                              f"Failed to load models: {self.loading_error}\n\nThe application will close.")
         self.root.destroy()
 
     def clean_text(self, text):
-        """Clean input text with the same preprocessing as training data"""
+        """
+        Clean input text with the same preprocessing as training data.
+
+        Applies text preprocessing including lowercasing, punctuation
+        removal, and whitespace normalization to match training data
+        preprocessing.
+
+        Parameters
+        ----------
+        text : str or other
+            Input text to clean. Non-string inputs are converted to string.
+
+        Returns
+        -------
+        cleaned_text : str
+            Preprocessed text with consistent formatting for model input.
+        """
         logging.info("Cleaning input text...")
 
         # Convert to string if not already
@@ -757,7 +963,25 @@ class ContentClassifierUI:
         return text
 
     def analyze_news(self):
-        """Analyze the news article and display results"""
+        """
+        Analyze the news article and display results.
+
+        Processes the news article text input along with optional domain
+        and URL information through the classifier and displays the
+        fake news detection results.
+
+        Returns
+        -------
+        None
+            Displays analysis results in the UI or shows error message
+            if analysis fails. Updates status bar with progress information.
+
+        Notes
+        -----
+        Performs domain extraction from URL if URL is provided but
+        domain is not. Uses the NewsClassifier to predict article
+        authenticity and displays formatted results with probabilities.
+        """
         if not self.models_loaded:
             messagebox.showinfo("Please Wait", "Models are still loading. Please try again in a moment.")
             return
@@ -790,7 +1014,7 @@ class ContentClassifierUI:
 
         try:
             # Use the classifier to analyze the text
-            account_date = ""  # Not applicable for news
+            account_date = ""
             result = self.classifier.predict(news_text, domain, account_date, url)
 
             if result:
@@ -809,7 +1033,29 @@ class ContentClassifierUI:
             self.status_bar.config(text="Analysis failed")
 
     def analyze_tweet(self):
-        """Analyze a tweet for bot detection and content classification"""
+        """
+        Analyze a tweet for bot detection and content classification.
+
+        Processes tweet text and user account metrics to perform both
+        bot detection and content classification analysis, displaying
+        comprehensive results for both analyses.
+
+        Returns
+        -------
+        None
+            Displays combined analysis results or shows error message
+            if analysis fails. Updates status bar with progress information.
+
+        Notes
+        -----
+        Collects and processes user metrics including:
+        - Basic counts (followers, friends, statuses, favorites)
+        - Account information (screen name, creation date, verification)
+        - Calculated metrics (ratios, age, etc.)
+
+        Performs both bot detection and content analysis using the
+        NewsClassifier and displays results in a combined format.
+        """
         if not self.models_loaded:
             messagebox.showinfo("Please Wait", "Models are still loading. Please try again in a moment.")
             return
@@ -899,7 +1145,8 @@ class ContentClassifierUI:
             # Perform bot detection with warning suppression
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=UserWarning,
-                                        message="X has feature names, but RandomForestClassifier was fitted without feature names")
+                                        message="X has feature names, but RandomForestClassifier was fitted without "
+                                                "feature names")
 
                 # Use the shared logic's predict_bot method
                 bot_result = self.classifier.predict_bot(tweet_text, user_data)
@@ -924,13 +1171,52 @@ class ContentClassifierUI:
             self.status_bar.config(text="Analysis failed")
 
     def predict_bot(self, tweet_text, user_data):
-        """Analyze if a tweet is from a bot using the classifier from shared_logic"""
-        # This method is now just a stub that redirects to the shared implementation
-        # in NewsClassifier. It shouldn't be called directly anymore - use self.classifier.predict_bot()
+        """
+        Analyze if a tweet is from a bot using the classifier from shared_logic.
+
+        This method is deprecated and redirects to the shared implementation.
+        Use self.classifier.predict_bot() directly instead.
+
+        Parameters
+        ----------
+        tweet_text : str
+            The tweet text to analyze.
+        user_data : dict
+            User account metrics and information.
+
+        Returns
+        -------
+        result : dict
+            Bot detection result from NewsClassifier.predict_bot().
+
+        Notes
+        -----
+        This method exists for backwards compatibility but should not be
+        called directly. Use the NewsClassifier instance instead.
+        """
         return self.classifier.predict_bot(tweet_text, user_data)
 
     def display_results(self, result):
-        """Display the analysis results"""
+        """
+        Display the analysis results.
+
+        Shows the analysis results in a formatted display based on the
+        type of analysis performed (news or tweet). Clears previous
+        results and creates appropriate visualization.
+
+        Parameters
+        ----------
+        result : dict
+            Analysis result dictionary containing:
+            - 'result_type': str, type of analysis ('news' or 'tweet')
+            - Additional keys depending on analysis type
+
+        Returns
+        -------
+        None
+            Updates the UI to show formatted results with appropriate
+            visualizations and probability charts.
+        """
         # Clear previous results
         for widget in self.results_frame.winfo_children():
             widget.destroy()
@@ -1041,7 +1327,27 @@ class ContentClassifierUI:
         self.create_probability_chart(result)
 
     def display_tweet_results(self, result):
-        """Display tweet analysis results (both bot detection and content)"""
+        """
+        Display tweet analysis results (both bot detection and content).
+
+        Creates a comprehensive display showing both bot detection results
+        and content classification results for tweet analysis, including
+        probabilities and confidence measures.
+
+        Parameters
+        ----------
+        result : dict
+            Tweet analysis result dictionary containing:
+            - 'bot_result': dict, bot detection analysis results
+            - 'content_result': dict, content classification results
+            - 'result_type': str, should be 'tweet'
+
+        Returns
+        -------
+        None
+            Updates the results display with tweet-specific formatting
+            showing both bot detection and content analysis results.
+        """
         # Get the bot and content results
         bot_result = result['bot_result']
         content_result = result['content_result']
@@ -1193,7 +1499,27 @@ class ContentClassifierUI:
             error_label.pack(anchor=tk.W, padx=10, pady=10)
 
     def create_probability_chart(self, result):
-        """Create a visual chart of the prediction probabilities"""
+        """
+        Create a visual chart of the prediction probabilities.
+
+        Generates a horizontal bar chart showing the probabilities for
+        different prediction categories using matplotlib embedded in
+        the Tkinter interface.
+
+        Parameters
+        ----------
+        result : dict
+            Analysis result containing probability data. Should have either:
+            - 'fake_probability' and 'real_probability' for news analysis, or
+            - 'bot_probability' and 'human_probability' for bot detection
+
+        Returns
+        -------
+        None
+            Embeds a matplotlib chart in the results frame showing
+            probability distributions. Returns early if no probability
+            data is available.
+        """
         chart_frame = tk.Frame(self.results_frame, bg=COLORS['background'])
         chart_frame.pack(fill=tk.BOTH, pady=10)
 
@@ -1237,7 +1563,18 @@ class ContentClassifierUI:
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
     def load_example_news(self):
-        """Load an example text for news analysis"""
+        """
+        Load an example text for news analysis.
+
+        Populates the news analysis form with sample article text,
+        domain, and URL for demonstration purposes.
+
+        Returns
+        -------
+        None
+            Clears existing inputs and loads example data into
+            news text area, domain entry, and URL entry fields.
+        """
         example_text = """
         Scientists have discovered a new species of deep-sea fish that can survive 
         at depths of over 8,000 meters in the Mariana Trench. The fish, named 
@@ -1255,7 +1592,18 @@ class ContentClassifierUI:
         self.url_entry.insert(0, "https://marinebiology.org/article/deep-sea-fish-discovery")
 
     def load_example_tweet(self):
-        """Load example data for tweet bot detection"""
+        """
+        Load example data for tweet bot detection.
+
+        Populates the tweet analysis form with sample tweet text and
+        typical bot account metrics for demonstration purposes.
+
+        Returns
+        -------
+        None
+            Clears existing inputs and loads example tweet text and
+            account metrics that are characteristic of bot accounts.
+        """
         example_tweet = "Just published 10 amazing tips for gaining followers fast! Check out the link below to learn " \
                         "more. #followers #socialmedia #growth #marketing "
 
@@ -1282,7 +1630,18 @@ class ContentClassifierUI:
         self.metric_entries['account_date'].insert(0, "2024-05")
 
     def clear_news(self):
-        """Clear the news article input and results"""
+        """
+        Clear the news article input and results.
+
+        Removes all text from news input fields and hides any displayed
+        results to prepare for new analysis.
+
+        Returns
+        -------
+        None
+            Clears news text area, domain entry, URL entry, and hides
+            results display. Updates status bar.
+        """
         self.news_text.delete("1.0", tk.END)
         self.domain_entry.delete(0, tk.END)
         self.url_entry.delete(0, tk.END)
@@ -1295,7 +1654,20 @@ class ContentClassifierUI:
         self.status_bar.config(text="Ready to analyze news article")
 
     def clear_tweet(self):
-        """Clear the tweet input, metrics, and results"""
+        """
+        Clear the tweet input, metrics, and results.
+
+        Removes all text from tweet input fields and metric entries,
+        resets numeric fields to default values, and hides any displayed
+        results to prepare for new analysis.
+
+        Returns
+        -------
+        None
+            Clears tweet text area and all metric entries, resets
+            numeric fields to "0", hides results display, and updates
+            status bar.
+        """
         self.tweet_text.delete("1.0", tk.END)
 
         # Clear all metric entries
